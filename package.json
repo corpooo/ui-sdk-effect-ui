@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "upstream": "node scripts/upstream.ts",
+    "specs": "node scripts/specs.ts",
     "prepare": "vp config"
   },
   "devDependencies": {
