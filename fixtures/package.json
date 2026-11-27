@@ -1,0 +1,13 @@
+{
+  "name": "fixtures",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@corpooo/ui-sdk-effect-ui": "workspace:*",
+    "@effect/ui": "catalog:",
+    "@ui-sdk/core": "link:../upstream/ui/packages/core",
+    "effect": "catalog:",
+    "tests": "link:../upstream/ui/tests"
+  }
+}
