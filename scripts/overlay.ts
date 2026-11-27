@@ -23,7 +23,7 @@ import {
   upstreamSpecs,
 } from "./paths.ts";
 
-type Link = { link: string; target: string };
+type Link = { name: string; framework: string; link: string; target: string };
 
 const isEntry = (file: string) =>
   frameworks.some((framework) => file === `${framework}.ts` || file === `${framework}.tsx`);
@@ -42,6 +42,8 @@ const links = (root: string, served: (name: string) => string) =>
     readdirSync(join(root, name))
       .filter(isEntry)
       .map((file) => ({
+        name: served(name),
+        framework: file.replace(/\.tsx?$/, ""),
         link: join(upstreamFixtures, served(name), file),
         target: join(root, name, file),
       })),
@@ -52,19 +54,15 @@ export function planned(): Link[] {
   return [...links(fixtures, (name) => name), ...links(ownFixtures, (name) => `own-${name}`)];
 }
 
-const entries = (root: string, served: (name: string) => string) =>
-  Object.fromEntries(
+const entries = (root: string, served: (name: string) => string) => {
+  const all = links(root, served);
+  return Object.fromEntries(
     frameworks.map((framework) => [
       framework,
-      directories(root)
-        .filter((name) =>
-          ["ts", "tsx"].some((extension) =>
-            existsSync(join(root, name, `${framework}.${extension}`)),
-          ),
-        )
-        .map(served),
+      all.filter((entry) => entry.framework === framework).map((entry) => entry.name),
     ]),
   );
+};
 
 /** The names of upstream's fixtures we have an entry for, by framework. Our own fixtures aren't among them. */
 export const shipped = () => entries(fixtures, (name) => name);

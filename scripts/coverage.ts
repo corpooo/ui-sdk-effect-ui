@@ -34,12 +34,15 @@ const available = readdirSync(upstreamFixtures).filter((name) =>
   existsSync(join(upstreamFixtures, name, "react.tsx")),
 );
 const ours = shipped();
+const ourOwn = ownShipped();
 for (const framework of frameworks) {
   const names = ours[framework] ?? [];
   console.log(
     `${framework} fixtures: ${names.length} of upstream's ${available.length} (${names.join(", ")}).`,
   );
-  const unnamed = names.filter((name) => !baseline[framework]?.includes(name));
+  const unnamed = [...names, ...(ourOwn[framework] ?? [])].filter(
+    (name) => !baseline[framework]?.includes(name),
+  );
   if (unnamed.length) {
     console.log(`Add ${unnamed.join(", ")} to ${framework} in coverage-baseline.json.`);
   }
@@ -86,7 +89,7 @@ const found = problems({
   args,
   frameworkOf: ownProjects,
   shipped: ours,
-  ownShipped: ownShipped(),
+  ownShipped: ourOwn,
   opened: opened(),
   missing: missing(report),
   baseline,

@@ -17,17 +17,17 @@ CI runs only here, with no hosted runner. `vp run ci` runs every step in order: 
 
 ## The spec run
 
-`pnpm specs` symlinks each `fixtures/<name>/effect.ts` and `effect-ssr.ts` to where upstream's playground looks for `<name>/<framework>.ts`, and each `fixtures/own/<name>/` entry to `own-<name>/`. It builds and serves the playground, runs Playwright with the projects from `scripts/playwright.config.ts`, and removes the links. The `effect` and `effect-ssr` projects run upstream's specs. The `own` and `own-ssr` projects run ours, with the same `effect` and `effect-ssr` fixture files. The runner serves the playground itself and stops it on every way out, a kill or a hangup included. It serves on port 5300, or `PLAYGROUND_PORT`. Only a `kill -9` leaves links and a server behind: the next run removes the links, as does `pnpm specs --restore`, and the server has to be stopped by hand.
+`pnpm specs` symlinks each `fixtures/<name>/effect.ts` and `effect-ssr.ts` to where upstream's playground looks for `<name>/<framework>.ts`, and each `fixtures/own/<name>/` entry to `own-<name>/`. It builds and serves the playground, runs Playwright with the projects from `scripts/playwright.config.ts`, and removes the links. The `effect` and `effect-ssr` projects run upstream's specs. The `own` and `own-ssr` projects run ours, with the same `effect` and `effect-ssr` fixture files. The runner serves the playground from its own process, so the server ends with it, and the run fails when that server can't bind. It serves on port 5300, or `PLAYGROUND_PORT`. The runner removes the links on every way out, a kill or a hangup included. Only a `kill -9` leaves them behind: the next run removes them, as does `pnpm specs --restore`.
 
 A spec skips itself where its fixture is missing, so a green run proves nothing by itself. The coverage gate fails when a spec file that opens a fixture we ship ran no test, when a fixture we ship is opened by no spec file, when a test skipped for want of a fixture we ship, or when a fixture `coverage-baseline.json` names for a framework, `effect` or `effect-ssr`, is gone. A spec file that skips every test for us by its own rule goes in that file's `exempt`, with why.
 
-Our own specs and fixtures are counted apart, and never stand in for one of upstream's. The gate fails when a spec file of our own ran no test in a project that runs it, unless all its tests are `test.fixme`s, and when a test opens an `own-` fixture we don't have.
+Our own specs and fixtures are counted apart, and never stand in for one of upstream's. The gate fails when a spec file of our own ran no test in a project that runs it, unless all its tests are `test.fixme`s, and when a test opens an `own-` fixture we don't have. `coverage-baseline.json` names our own fixtures too, as `own-<name>`, under each framework they have an entry for.
 
 ## Adding a spec of our own
 
 Write one where upstream's fixtures don't draw a case, like an id from the consumer or events dispatched in one task.
 
-1. Write the page as `fixtures/own/<name>/effect.ts`, and `effect-ssr.ts` beside it where the case is about hydration. The playground serves it as `own-<name>`, a name no upstream fixture has: the run stops if one ever does. It needs the `Before` button, which `open` waits for.
+1. Write the page as `fixtures/own/<name>/effect.ts`, and `effect-ssr.ts` beside it where the case is about hydration. The playground serves it as `own-<name>`, a name no upstream fixture has: the run stops if one ever does. It needs the `Before` button, which `open` waits for. Name it in `coverage-baseline.json` under each framework it has an entry for.
 2. Write `specs/<name>.spec.ts`. Import `test`, `expect` and the helpers from `../upstream/ui/tests/fixtures.ts`, and open the page with `open("own-<name>")`, so upstream's page harness serves it. Take `Page` and `Locator` types from a helper, as `Parameters<typeof tabNamed>[0]`, since `@playwright/test` resolves only inside the upstream checkout.
 3. Run `pnpm specs --project=own --project=own-ssr <name>`, break the code on purpose, and see the spec fail before you trust it.
 

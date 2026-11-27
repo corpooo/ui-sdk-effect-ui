@@ -150,17 +150,22 @@ export function problems(input: {
       }
     }
   }
-  for (const name of new Set(Object.values(input.shipped).flat())) {
+  const all = (framework: string) => [
+    ...(input.shipped[framework] ?? []),
+    ...(input.ownShipped[framework] ?? []),
+  ];
+  for (const name of new Set(
+    [...Object.values(input.shipped), ...Object.values(input.ownShipped)].flat(),
+  )) {
     if (!input.opened.includes(name)) {
-      found.push(`fixtures/${name} is opened by no spec file, so nothing tests it.`);
+      found.push(`The fixture ${name} is opened by no spec file, so nothing tests it.`);
     }
   }
   // A missing fixture of ours is a run that lost its links, or a spec that names one we don't have.
   const allOwn = new Set(Object.values(input.ownShipped).flat());
   for (const { project, file, fixture } of input.missing) {
     const framework = input.frameworkOf[project] ?? project;
-    const ours = [...(input.shipped[framework] ?? []), ...(input.ownShipped[framework] ?? [])];
-    if (ours.includes(fixture)) {
+    if (all(framework).includes(fixture)) {
       found.push(`${file} skipped a test in ${project} for want of ${fixture}, which we ship.`);
     } else if (fixture.startsWith("own-") && !allOwn.has(fixture)) {
       found.push(`${file} opens ${fixture}, and we have no fixture of that name.`);
@@ -168,7 +173,7 @@ export function problems(input: {
   }
   for (const [framework, names] of Object.entries(input.baseline)) {
     for (const name of names) {
-      if (!input.shipped[framework]?.includes(name)) {
+      if (!all(framework).includes(name)) {
         found.push(`coverage-baseline.json names ${name} for ${framework}, and we don't ship it.`);
       }
     }

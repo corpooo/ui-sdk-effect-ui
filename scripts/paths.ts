@@ -17,6 +17,8 @@ export const upstreamTests = at("../upstream/ui/tests/");
 export const upstreamPlayground = at("../upstream/ui/apps/playground/");
 /** Upstream installs hoisted, so every package's binaries are here. */
 export const upstreamBin = at("../upstream/ui/node_modules/.bin/");
+/** Upstream's Vite, whose `preview` serves the playground from this process. */
+export const upstreamVite = at("../upstream/ui/node_modules/vite/dist/node/index.js");
 export const upstreamSpecs = at("../upstream/ui/tests/specs/");
 /** What a spec run leaves for the coverage gate. */
 export const results = at("../test-results/");
