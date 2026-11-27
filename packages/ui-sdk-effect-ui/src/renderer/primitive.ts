@@ -224,6 +224,11 @@ function deliver(node: HTMLElement, message: unknown) {
 /** What a part's mount runs with the live instance once a render's options are handed over, for what an option can't say. */
 export type After = (instance: PrimitiveInstance) => void;
 
+// How many mounts are taking a render's options right now. Those options
+// change stores, the parts of other mounts' too, and a part's own mount checks
+// what that did once it has taken its render.
+let rendering = 0;
+
 /** One part as a render gives it to its element's mount. */
 type Binding = {
   readonly shown: Shown;
@@ -242,18 +247,27 @@ function attach(node: HTMLElement, first: Handle) {
   let current: Binding | undefined;
   // What core showed when the component last rendered or was last told to.
   let told: Snapshot | undefined;
-  // A render's own options change the store, which isn't news to the render.
-  let rendering = false;
   const read = (part: Part): Snapshot => ({
     present: present(part),
     attrs: attrs(part),
     state: partState(part),
   });
+  // Tells the component when core shows something it hasn't rendered.
+  const check = (bound: Part) => {
+    if (bound !== part) {
+      return;
+    }
+    const now = read(bound);
+    if (!same(now, told)) {
+      told = now;
+      deliver(node, current?.onChange);
+    }
+  };
   return {
     render(binding: Binding) {
       const { shown } = binding;
       current = binding;
-      rendering = true;
+      rendering++;
       try {
         chainOf(shown.handle).forEach(handOver);
         // Props that change a part's key name another part.
@@ -264,19 +278,15 @@ function attach(node: HTMLElement, first: Handle) {
           part = next;
           const cleanups = [
             bind(next, node, host),
-            subscribe(next, () => {
-              const now = read(next);
-              if (!rendering && !same(now, told)) {
-                told = now;
-                deliver(node, current?.onChange);
-              }
-            }),
+            // A change during a render waits for every mount to take that
+            // render, which most changes then turn out to be part of.
+            subscribe(next, () => (rendering ? queueMicrotask(() => check(next)) : check(next))),
           ];
           leave = () => cleanups.forEach((cleanup) => cleanup());
         }
         binding.after?.(entry.instance);
       } finally {
-        rendering = false;
+        rendering--;
       }
       // A render before the element bound couldn't show what core learns from
       // it, like whether a button is a native one. Told once per state, so a
@@ -290,6 +300,7 @@ function attach(node: HTMLElement, first: Handle) {
     },
     detach() {
       leave();
+      part = undefined;
       entry.sinks.delete(sink);
       releases.reverse().forEach((release) => release());
     },
