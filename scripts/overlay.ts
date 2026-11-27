@@ -12,35 +12,47 @@ import {
   symlinkSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fixtures, frameworks, upstream, upstreamFixtures } from "./paths.ts";
+import { fixtures, frameworks, ownFixtures, upstream, upstreamFixtures } from "./paths.ts";
 
 type Link = { link: string; target: string };
 
 const isEntry = (file: string) =>
   frameworks.some((framework) => file === `${framework}.ts` || file === `${framework}.tsx`);
 
+// `own` holds our own fixtures, so it is no fixture of upstream's.
 const directories = (root: string) =>
-  readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name !== "node_modules")
-    .map((entry) => entry.name);
+  existsSync(root)
+    ? readdirSync(root, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !["node_modules", "own"].includes(entry.name))
+        .map((entry) => entry.name)
+    : [];
+
+// Each entry of the fixtures in `root`, linked where the playground looks for `served(name)`.
+const links = (root: string, served: (name: string) => string) =>
+  directories(root).flatMap((name) =>
+    readdirSync(join(root, name))
+      .filter(isEntry)
+      .map((file) => ({
+        link: join(upstreamFixtures, served(name), file),
+        target: join(root, name, file),
+      })),
+  );
 
 /** Every fixture entry we have, with the upstream path the playground loads it from. */
 export function planned(): Link[] {
-  return directories(fixtures).flatMap((name) =>
-    readdirSync(join(fixtures, name))
-      .filter(isEntry)
-      .map((file) => ({
-        link: join(upstreamFixtures, name, file),
-        target: join(fixtures, name, file),
-      })),
-  );
+  return [...links(fixtures, (name) => name), ...links(ownFixtures, (name) => `own-${name}`)];
 }
 
-/** The fixture names we have an `effect` entry for. */
+/** The names of upstream's fixtures we have an `effect` entry for. Our own fixtures aren't among them. */
 export function shipped() {
   return directories(fixtures).filter((name) =>
     ["ts", "tsx"].some((extension) => existsSync(join(fixtures, name, `effect.${extension}`))),
   );
+}
+
+/** Our own fixtures, by the name a spec opens them with. */
+export function owned() {
+  return directories(ownFixtures).map((name) => `own-${name}`);
 }
 
 // A symlink into our fixtures is ours whoever made it: this run, one that was

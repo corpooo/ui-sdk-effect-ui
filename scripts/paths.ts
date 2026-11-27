@@ -4,6 +4,10 @@ const at = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 /** Our fixtures: `<name>/effect.ts` and `<name>/effect-<variant>.ts`. */
 export const fixtures = at("../fixtures/");
+/** Fixtures of our own, which no upstream spec opens: `own/<name>/effect.ts`, served as `own-<name>`. */
+export const ownFixtures = at("../fixtures/own/");
+/** Specs of our own, for what upstream's fixtures don't draw. Each opens fixtures from `ownFixtures`. */
+export const ownSpecs = at("../specs/");
 /** The upstream checkout, a submodule this repository never commits into. */
 export const upstream = at("../upstream/ui/");
 /** Where the playground finds a fixture: `<name>/<framework>.ts`. */
@@ -26,3 +30,6 @@ export const port = process.env.PLAYGROUND_PORT ?? "5300";
 
 /** The Playwright projects the overlay adds, one per fixture file name. */
 export const frameworks = ["effect", "effect-ssr"];
+
+/** The Playwright projects that run our own specs, each with the framework whose fixture files it opens. */
+export const ownProjects: Record<string, string> = { own: "effect", "own-ssr": "effect-ssr" };

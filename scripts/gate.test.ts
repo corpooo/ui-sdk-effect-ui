@@ -1,23 +1,33 @@
 import { expect, test } from "vite-plus/test";
 import { problems, tally, type Report } from "./gate.ts";
 
-const report = (tests: Record<string, string[]>): Report => ({
+// A test as the report gives it: by its status, or as "fixme" or "fail" for
+// a `test.fixme`, and a `test.fail` that failed.
+const entry = (projectName: string, status: string) =>
+  status === "fixme"
+    ? { projectName, status: "skipped", annotations: [{ type: "fixme" }] }
+    : status === "fail"
+      ? { projectName, status: "expected", expectedStatus: "failed" }
+      : { projectName, status };
+
+const report = (tests: Record<string, string[]>, projectName = "effect"): Report => ({
   config: {},
   suites: Object.entries(tests).map(([file, statuses]) => ({
     file,
     // Nested, as a `describe` block is.
-    suites: [
-      {
-        file,
-        specs: statuses.map((status) => ({ tests: [{ projectName: "effect", status }] })),
-      },
-    ],
+    suites: [{ file, specs: statuses.map((status) => ({ tests: [entry(projectName, status)] })) }],
   })),
 });
+
+// Our own specs, named by their path from upstream's spec directory, as the report names them.
+const ownReport = (statuses: string[]) =>
+  report({ "../../../../specs/tabs-keys.spec.ts": statuses }, "own").suites;
 
 const covered = {
   projects: ["effect"],
   expected: { effect: ["toggle.spec.ts"] },
+  ownProjects: [],
+  own: {},
   args: "",
   available: ["tabs", "toggle"],
   shipped: ["toggle"],
@@ -27,14 +37,65 @@ const covered = {
 
 test("tests are counted by spec file, inside describe blocks too", () => {
   const counts = tally(
-    report({ "toggle.spec.ts": ["expected", "flaky", "skipped", "unexpected"] }),
+    report({
+      "toggle.spec.ts": ["expected", "flaky", "skipped", "unexpected", "fail", "fixme"],
+    }),
   );
-  expect(counts.get("effect")?.get("toggle.spec.ts")).toEqual({ passed: 2, skipped: 1, failed: 1 });
+  expect(counts.get("effect")?.get("toggle.spec.ts")).toEqual({
+    passed: 2,
+    skipped: 1,
+    failed: 1,
+    expectedFail: 1,
+    fixme: 1,
+  });
 });
 
 test("a run whose expected spec files ran tests has no problems", () => {
   const counts = tally(report({ "toggle.spec.ts": ["expected", "skipped"] }));
   expect(problems({ ...covered, counts })).toEqual([]);
+});
+
+test("a test that fails as expected is a test that ran", () => {
+  const counts = tally(report({ "toggle.spec.ts": ["fail"] }));
+  expect(problems({ ...covered, counts })).toEqual([]);
+});
+
+const withOwn = { ...covered, ownProjects: ["own"], own: { own: ["tabs-keys.spec.ts"] } };
+const ownCounts = (statuses: string[]) => {
+  const upstream = report({ "toggle.spec.ts": ["expected"] });
+  return tally({ ...upstream, suites: [...upstream.suites, ...ownReport(statuses)] });
+};
+
+test("a spec of our own is counted by its file name", () => {
+  expect(ownCounts(["expected"]).get("own")?.get("tabs-keys.spec.ts")?.passed).toBe(1);
+});
+
+test("a spec of our own that ran a test has no problems", () => {
+  expect(problems({ ...withOwn, counts: ownCounts(["expected", "fail", "fixme"]) })).toEqual([]);
+});
+
+test("a spec of our own that only skipped, or is missing from the run, is a problem", () => {
+  const problem = "tabs-keys.spec.ts is a spec of our own, and ran no test in own.";
+  expect(problems({ ...withOwn, counts: ownCounts(["skipped"]) })).toEqual([problem]);
+  expect(problems({ ...withOwn, counts: ownCounts(["skipped", "fixme"]) })).toEqual([problem]);
+  expect(problems({ ...withOwn, counts: ownCounts([]) })).toEqual([problem]);
+});
+
+test("a spec of our own whose tests are all fixmes is a plan, not a problem", () => {
+  expect(problems({ ...withOwn, counts: ownCounts(["fixme", "fixme"]) })).toEqual([]);
+});
+
+test("a run that names no spec of our own for an own project is a problem", () => {
+  expect(problems({ ...withOwn, own: {}, counts: ownCounts(["expected"]) })).toEqual([
+    "The run names no spec file of our own for own.",
+  ]);
+});
+
+test("a spec of our own never stands in for a spec file of upstream's", () => {
+  const counts = tally({ config: {}, suites: ownReport(["expected"]) });
+  expect(problems({ ...withOwn, counts })).toEqual([
+    "toggle.spec.ts opens a fixture we ship, and ran no test in effect.",
+  ]);
 });
 
 test("a spec file for a fixture we ship that only skipped is a problem", () => {

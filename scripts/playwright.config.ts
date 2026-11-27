@@ -1,7 +1,19 @@
-// The upstream Playwright suite with our projects in place of its own. It
-// lives here and reads the upstream config by path, so no file is added to
-// the upstream checkout for it. Playwright runs it from `upstream/ui/tests`.
-import { frameworks, report, results, upstreamSpecs, upstreamTests } from "./paths.ts";
+// The upstream Playwright suite with our projects in place of its own, and
+// our own specs beside it. It lives here and reads the upstream config by
+// path, so no file is added to the upstream checkout for it. Playwright runs
+// it from `upstream/ui/tests`.
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  frameworks,
+  ownFixtures,
+  ownProjects,
+  ownSpecs,
+  report,
+  results,
+  upstreamSpecs,
+  upstreamTests,
+} from "./paths.ts";
 
 // Imported by path at run time, so our type check doesn't hold upstream's files to our compiler options.
 const { default: base } = (await import(`${upstreamTests}playwright.config.ts`)) as {
@@ -22,18 +34,46 @@ const expected = Object.fromEntries(
   }),
 );
 
+// Our own spec files, by the project that runs them. Every fixture of ours
+// has an `effect.ts`, so `own` runs every file, and a fixture that's missing
+// skips its tests, which the coverage gate fails. `own-ssr` runs the files
+// that open a fixture with an `effect-ssr.ts`.
+const ownFiles = readdirSync(ownSpecs).filter((file) => file.endsWith(".spec.ts"));
+const opened = (file: string) =>
+  [...readFileSync(join(ownSpecs, file), "utf8").matchAll(/\bopen\(\s*"own-([\w-]+)"/g)].map(
+    ([, name]) => name!,
+  );
+const own = Object.fromEntries(
+  Object.entries(ownProjects).map(([project, framework]) => [
+    project,
+    framework.endsWith("-ssr")
+      ? ownFiles.filter((file) =>
+          opened(file).some((name) => existsSync(join(ownFixtures, name, `${framework}.ts`))),
+        )
+      : ownFiles,
+  ]),
+);
+
 export default {
   ...base,
   testDir: upstreamSpecs,
   outputDir: results,
-  metadata: { expected, args: process.env.SPECS_ARGS ?? "" },
+  metadata: { expected, own, args: process.env.SPECS_ARGS ?? "" },
   reporter: [[process.env.CI ? "dot" : "list"], ["json", { outputFile: report }]],
-  // Specs that would only skip stay out of a project, as upstream's do.
-  projects: frameworks.map((framework) => ({
-    name: framework,
-    use: { browserName: "chromium" as const, framework },
-    testIgnore: specsThatSkip(framework),
-  })),
+  projects: [
+    // Specs that would only skip stay out of a project, as upstream's do.
+    ...frameworks.map((framework) => ({
+      name: framework,
+      use: { browserName: "chromium" as const, framework },
+      testIgnore: specsThatSkip(framework),
+    })),
+    ...Object.entries(ownProjects).map(([project, framework]) => ({
+      name: project,
+      testDir: ownSpecs,
+      testMatch: own[project]!,
+      use: { browserName: "chromium" as const, framework },
+    })),
+  ],
   // `specs.ts` builds and serves the playground, so it can stop the server on every way out.
   webServer: undefined,
 };
