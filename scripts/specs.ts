@@ -17,11 +17,6 @@ import {
   upstreamVite,
 } from "./paths.ts";
 
-// Imported by path at run time, as the Vite the playground builds with.
-const { preview } = (await import(upstreamVite)) as {
-  preview: (config: object) => Promise<{ close: () => Promise<void> }>;
-};
-
 function restored() {
   restore();
   const changes = upstreamChanges();
@@ -97,6 +92,10 @@ async function run() {
   // bind, so the specs never run against whatever else holds the port. Its
   // own SIGTERM and stdin handlers exit before the links come out, so ours
   // are the only ones left.
+  // Imported by path, as the Vite the playground builds with.
+  const { preview } = (await import(upstreamVite)) as {
+    preview: (config: object) => Promise<{ close: () => Promise<void> }>;
+  };
   const term = process.listeners("SIGTERM");
   const end = process.stdin.listeners("end");
   const server = await preview({

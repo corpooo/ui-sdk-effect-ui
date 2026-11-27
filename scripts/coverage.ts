@@ -9,7 +9,7 @@
 // unless it holds only `test.fixme`s.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { missing, problems, ran, tally, type Counts, type Report } from "./gate.ts";
+import { interrupted, missing, problems, ran, tally, type Counts, type Report } from "./gate.ts";
 import { opened, owned, ownShipped, shipped } from "./overlay.ts";
 import {
   baseline as baselineFile,
@@ -81,6 +81,7 @@ const found = problems({
   ownProjects: Object.keys(ownProjects),
   own: ownFiles,
   args,
+  interrupted: interrupted(report),
   frameworkOf: ownProjects,
   shipped: ours,
   ownShipped: ourOwn,

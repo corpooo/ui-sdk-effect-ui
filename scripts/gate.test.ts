@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { missing, problems, tally, type Report } from "./gate.ts";
+import { interrupted, missing, problems, tally, type Report } from "./gate.ts";
 
 // A test as the report gives it: by its status, or as "fixme" for a `test.fixme`.
 const entry = (projectName: string, status: string) =>
@@ -26,6 +26,7 @@ const covered = {
   ownProjects: [],
   own: {},
   args: "",
+  interrupted: 0,
   frameworkOf: { own: "effect" },
   shipped: { effect: ["toggle"], "effect-ssr": ["toggle"] },
   ownShipped: { effect: ["own-tabs-keys"], "effect-ssr": [] },
@@ -162,6 +163,31 @@ test("an own fixture no spec opens, or one the baseline names that is gone, is a
       baseline: { effect: ["toggle", "own-tabs-keys"], "effect-ssr": ["toggle", "own-tabs-keys"] },
     }),
   ).toEqual(["coverage-baseline.json names own-tabs-keys for effect-ssr, and we don't ship it."]);
+});
+
+test("a run stopped with tests in flight is a problem", () => {
+  const stopped: Report = {
+    config: {},
+    suites: [
+      {
+        file: "toggle.spec.ts",
+        specs: [
+          {
+            tests: [{ projectName: "effect", status: "expected", results: [{ status: "passed" }] }],
+          },
+          {
+            tests: [
+              { projectName: "effect", status: "skipped", results: [{ status: "interrupted" }] },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  expect(interrupted(stopped)).toBe(1);
+  expect(problems({ ...covered, counts: tally(stopped), interrupted: 1 })).toEqual([
+    "The run was stopped with 1 tests in flight. Run `pnpm specs` to the end.",
+  ]);
 });
 
 test("a fixture the baseline doesn't name is a problem", () => {

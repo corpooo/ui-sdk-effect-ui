@@ -19,6 +19,7 @@ type Spec = {
     projectName: string;
     status: string;
     annotations?: { type: string; description?: string }[];
+    results?: { status: string }[];
   }[];
 };
 
@@ -69,6 +70,13 @@ export function tally(report: Report) {
   return counts;
 }
 
+/** How many tests a stopped run cut short. Playwright reports each as skipped. */
+export const interrupted = (report: Report) =>
+  report.suites
+    .flatMap(specsOf)
+    .flatMap((spec) => spec.tests)
+    .filter((test) => test.results?.some(({ status }) => status === "interrupted")).length;
+
 /** Each test that skipped itself because a fixture it opens is missing, as upstream's `open` says. */
 export function missing(report: Report) {
   const found: { project: string; file: string; fixture: string }[] = [];
@@ -104,6 +112,8 @@ export function problems(input: {
   own: Record<string, string[]>;
   /** The Playwright arguments that narrowed the run, empty for a run of everything. */
   args: string;
+  /** How many tests the run was stopped in the middle of. */
+  interrupted: number;
   /** The framework each project runs. */
   frameworkOf: Record<string, string>;
   /** The fixtures we ship, and our own, by framework. */
@@ -119,6 +129,11 @@ export function problems(input: {
   exempt: Record<string, string>;
 }) {
   const found: string[] = [];
+  if (input.interrupted) {
+    found.push(
+      `The run was stopped with ${input.interrupted} tests in flight. Run \`pnpm specs\` to the end.`,
+    );
+  }
   if (input.args) {
     found.push(`The run was narrowed with "${input.args}". Run \`pnpm specs\` with no arguments.`);
   }
