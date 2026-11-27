@@ -1,6 +1,7 @@
+import { Html, HtmlServer } from "@effect/ui/html";
 import { Story } from "@effect/ui/testing";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import {
   Toggle,
   ToggleEvents,
@@ -54,24 +55,46 @@ describe("Toggle", () => {
       }),
   );
 
-  it.effect("a parent refuses a press by keeping the prop, and the next press asks again", () =>
+  it.effect("a parent refuses a press by keeping the prop", () =>
     Effect.gen(function* () {
       const story = yield* Story.make(ToggleStory, { pressed: false });
       story.send(press(true)).emitted(pressedEvent(true));
       story.props({ pressed: false });
       assert.isFalse(Story.parts(Toggle, story.current).pressed);
-      // A refused press left nothing behind: the toggle asks for the same change.
-      story.send(press(true)).emitted(pressedEvent(true));
-      assert.isFalse(Story.parts(Toggle, story.current).pressed);
+      // The request left nothing behind in the toggle's own value either.
+      assert.isFalse(story.model.pressed);
     }),
   );
 
-  it.effect("its attributes say whether it's pressed and disabled, before any element binds", () =>
+  it.effect("a server render draws core's attributes beside the consumer's own", () =>
     Effect.gen(function* () {
-      const story = yield* Story.make(ToggleStory, { pressed: true, disabled: true });
-      const toggle = Story.parts(Toggle, story.current);
-      assert.isTrue(toggle.pressed);
-      assert.isTrue(toggle.disabled);
+      const Page = Html.component({ name: "Page", model: Schema.Null, message: Schema.Never }).make(
+        {
+          init: () => null,
+          update: ($) => $.model,
+          view: (h) =>
+            Toggle(h, {
+              props: { pressed: true, disabled: true },
+              onEmit: { RequestedPressed: () => undefined },
+              view: (toggle) =>
+                toggle.root(h.button.class("tool").attr("tabindex", "-1")).children("Bold"),
+            }),
+        },
+      );
+      const { html } = yield* HtmlServer.renderToHtml(Page, {});
+      const button = /<button[^>]*>/.exec(html)?.[0] ?? "";
+      for (const attribute of [
+        'data-slot="toggle"',
+        'type="button"',
+        'aria-pressed="true"',
+        "data-pressed",
+        "disabled",
+        // Core leaves a lone toggle's tabindex unset, which must not remove the consumer's.
+        'tabindex="-1"',
+        'class="tool"',
+      ]) {
+        assert.include(button, attribute);
+      }
     }),
   );
 

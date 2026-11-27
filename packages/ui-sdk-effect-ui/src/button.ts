@@ -11,8 +11,9 @@ export const ButtonProps = Schema.Struct({
   /** What a native button does in a form. Ignored when the button is another element. */
   type: Schema.optional(Schema.Literals(["button", "submit", "reset"])),
   /**
-   * Whether the work a press started is still running. While it is, the button
-   * says it's busy, keeps focus and refuses presses, so a form can't submit twice.
+   * Whether the work a press started is still running. From the render that
+   * turns it on, the button says it's busy, keeps focus and refuses presses, so
+   * a form can't submit twice.
    */
   pending: Schema.optional(Schema.Boolean),
   /** What screen readers hear once it has been pending for a second. "Loading" when left out. */

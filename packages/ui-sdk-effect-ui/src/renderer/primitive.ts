@@ -208,11 +208,13 @@ const same = (a: Snapshot, b: Snapshot | undefined) =>
 // Effect UI's handler below answers with the message. An event is delivered
 // before `dispatchEvent` returns, so a press has changed the Model by the time
 // its click is over, where a mount's result would arrive a task later.
+// Parts of several components can share one element, each with a handler of
+// its own, so a message names the instance it is for.
 const messageEvent = "ui-sdk-message";
-let carried: unknown;
-function deliver(node: HTMLElement, message: unknown) {
+let carried: { readonly to: string; readonly message: unknown } | undefined;
+function deliver(node: HTMLElement, to: string, message: unknown) {
   const outer = carried;
-  carried = message;
+  carried = { to, message };
   try {
     // It doesn't bubble, so only this element's handler hears it.
     node.dispatchEvent(new Event(messageEvent));
@@ -240,7 +242,7 @@ type Binding = {
 function attach(node: HTMLElement, first: Handle) {
   const releases = chainOf(first).map(acquire);
   const entry = live.get(first.id)!;
-  const sink = (message: unknown) => deliver(node, message);
+  const sink = (message: unknown) => deliver(node, first.id, message);
   entry.sinks.add(sink);
   let part: Part | undefined;
   let leave = () => {};
@@ -260,10 +262,11 @@ function attach(node: HTMLElement, first: Handle) {
     const now = read(bound);
     if (!same(now, told)) {
       told = now;
-      deliver(node, current?.onChange);
+      deliver(node, first.id, current?.onChange);
     }
   };
   return {
+    id: first.id,
     render(binding: Binding) {
       const { shown } = binding;
       current = binding;
@@ -295,7 +298,7 @@ function attach(node: HTMLElement, first: Handle) {
       const news = !same(now, shown) && !same(now, told);
       told = now;
       if (news) {
-        deliver(node, binding.onChange);
+        deliver(node, first.id, binding.onChange);
       }
     },
     detach() {
@@ -318,13 +321,21 @@ const BindPart = Mount.make(
       if (!(node instanceof HTMLElement)) {
         return Component.noop;
       }
-      const attached = yield* Effect.acquireRelease(
-        Effect.sync(() => attach(node, binding.shown.handle)),
-        (attached) => Effect.sync(() => attached.detach()),
+      const element = yield* Effect.acquireRelease(
+        Effect.sync(() => ({ attached: attach(node, binding.shown.handle) })),
+        (element) => Effect.sync(() => element.attached.detach()),
       );
       // `changes` starts with the render that started the mount, and ends with the element.
       yield* Stream.runForEach(changes, ({ binding }) =>
-        Effect.sync(() => attached.render(binding)),
+        Effect.sync(() => {
+          // An element without a key can go to another instance, like a
+          // group's first toggle when the item before it leaves.
+          if (element.attached.id !== binding.shown.handle.id) {
+            element.attached.detach();
+            element.attached = attach(node, binding.shown.handle);
+          }
+          element.attached.render(binding);
+        }),
       );
       return Component.noop;
     }),
@@ -343,6 +354,9 @@ export const drawn = <Msg, P extends Primitive, S extends SlotName<P>>(
   after?: After,
 ) =>
   builder
-    .attrs(shown.attrs)
-    .on(messageEvent, () => carried as Msg)
+    // Without the attributes core leaves unset, which would remove the consumer's own.
+    .attrs(defined(shown.attrs))
+    .on(messageEvent, () =>
+      carried?.to === shown.handle.id ? (carried.message as Msg) : undefined,
+    )
     .onMount(BindPart({ binding: { shown: shown as unknown as Shown, onChange, after } }));
