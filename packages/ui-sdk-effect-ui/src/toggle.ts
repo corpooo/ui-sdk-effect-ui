@@ -17,6 +17,13 @@ export const ToggleProps = Schema.Struct({
   focusableWhenDisabled: Schema.optional(Schema.Boolean),
 });
 
+export const ToggleModel = Schema.Struct({
+  /** The value, while the props leave `pressed` out. */
+  pressed: Schema.Boolean,
+  /** Counts core's own changes, each of which renders again. */
+  revision: Schema.Number,
+});
+
 export const ToggleMessage = UiSchema.TaggedEnum({
   /** Core asked to press or unpress it. */
   RequestedPressed: { pressed: Schema.Boolean, reason: Reason },
@@ -40,12 +47,7 @@ export const ToggleEvents = UiSchema.TaggedEnum({
 export const Toggle = Html.component({
   name: "Toggle",
   props: ToggleProps,
-  model: Schema.Struct({
-    /** The value, while the props leave `pressed` out. */
-    pressed: Schema.Boolean,
-    /** Counts core's own changes, each of which renders again. */
-    revision: Schema.Number,
-  }),
+  model: ToggleModel,
   message: ToggleMessage,
   events: ToggleEvents,
 }).make({
@@ -99,6 +101,13 @@ export const ToggleGroupProps = Schema.Struct({
   loop: Schema.optional(Schema.Boolean),
 });
 
+export const ToggleGroupModel = Schema.Struct({
+  /** The value, while the props leave `value` out. */
+  value: Schema.Array(Schema.String),
+  /** Counts core's own changes, each of which renders again. */
+  revision: Schema.Number,
+});
+
 export const ToggleGroupMessage = UiSchema.TaggedEnum({
   /** Core asked for another set of pressed toggles. */
   RequestedValue: { value: Schema.Array(Schema.String), reason: Reason },
@@ -124,12 +133,7 @@ export const ToggleGroupEvents = UiSchema.TaggedEnum({
 export const ToggleGroup = Html.component({
   name: "ToggleGroup",
   props: ToggleGroupProps,
-  model: Schema.Struct({
-    /** The value, while the props leave `value` out. */
-    value: Schema.Array(Schema.String),
-    /** Counts core's own changes, each of which renders again. */
-    revision: Schema.Number,
-  }),
+  model: ToggleGroupModel,
   message: ToggleGroupMessage,
   events: ToggleGroupEvents,
 }).make({
