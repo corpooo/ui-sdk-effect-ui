@@ -1,29 +1,53 @@
-# Vite+ Monorepo Starter
+# ui-sdk-effect-ui
 
-A starter for creating a Vite+ monorepo.
+Vercel's [UI SDK](https://github.com/vercel-labs/ui) components for [Effect UI](https://github.com/Effect-TS/ui).
 
-## Development
+Each component is a headless Effect UI component over its `@ui-sdk/core` primitive. Core keeps the behaviour: keyboard handling, focus, ARIA and state rules. Effect UI keeps the state in a Model and draws the markup you write. The aim is the behaviour of `@ui-sdk/react`, and upstream's own Playwright specs check it, unmodified, against fixtures written with this package.
 
-- Check everything is ready:
+## Status
 
-```bash
-vp run ready
+Early, and not published. Both dependencies are pinned to single commits: UI SDK at `655c279a`, and Effect UI at the `pkg.pr.new` build of `22128c65` with `effect` 4.1.6.
+
+| Component           | Entry                                 | Upstream specs                     |
+| ------------------- | ------------------------------------- | ---------------------------------- |
+| Toggle, ToggleGroup | `@corpooo/ui-sdk-effect-ui/toggle`    | pass, client-rendered and hydrated |
+| Button              | `@corpooo/ui-sdk-effect-ui/button`    | pass, client-rendered and hydrated |
+| Separator           | `@corpooo/ui-sdk-effect-ui/separator` | pass, client-rendered and hydrated |
+
+That is 2 of upstream's 146 fixtures, `toggle` and `toggle-render`.
+
+## Use
+
+A component takes your `h` and a `view` that applies its parts to elements of your own.
+
+```ts
+import { Toggle } from "@corpooo/ui-sdk-effect-ui/toggle";
+
+// In a view. The toggle keeps its own value and reports each press.
+Toggle(h, {
+  props: { initialPressed: false },
+  onEmit: { RequestedPressed: ({ pressed }) => EditorMessage.ToggledBold({ pressed }) },
+  view: (toggle) => toggle.root(h.button.class("tool")).children("Bold"),
+});
 ```
 
-- Run the tests:
+Pass `pressed` in the props to hold the value yourself. A press then only asks, with `RequestedPressed`. Pass the new value back to accept it, or keep the old one to refuse.
 
-```bash
-vp run -r test
+## Develop
+
+```sh
+git clone --recurse-submodules https://github.com/corpooo/ui-sdk-effect-ui
+cd ui-sdk-effect-ui
+vp install
+pnpm upstream   # upstream's dependencies, core's declarations, Chromium
+vp check
+vp test
+pnpm specs      # upstream's specs against our fixtures
+pnpm coverage   # what that run covered
 ```
 
-- Build the monorepo:
+`AGENTS.md` says how the spec run works and how to add a component.
 
-```bash
-vp run -r build
-```
+## License
 
-- Run the development server:
-
-```bash
-vp run dev
-```
+MIT. The fixtures under `fixtures/` are rewritten from UI SDK's, which are Apache-2.0. See `NOTICE`.
