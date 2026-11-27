@@ -28,10 +28,13 @@ for (const list of ["Kept", "Held"]) {
     test(`${owner}: ${name} in one task selects ${lands}`, async ({ page, open }) => {
       // AGENTS.md, Known limits: for a value the parent holds, core judges the
       // second of two requests in one task against the old value, so one that
-      // returns to it is dropped. This flips red once that is fixed.
+      // returns to it is dropped. This flips red once that is fixed. The other
+      // cases on this page pass, so a broken page fails them, not only this.
       test.fail(list === "Held" && name === "away and back", "Known limit, see AGENTS.md.");
       await open("own-tabs-keys");
       await pressInOneTask(page, list, keys);
+      // Each key asks once, so keys that come back to the start did something.
+      await expect(page.getByRole("status", { name: "Requests" })).toHaveText(`${keys.length}`);
       const tabs = page.getByRole("tablist", { name: list });
       await expect(tabs.getByRole("tab", { selected: true })).toHaveText(lands);
       expect(await focusedName(page)).toBe(lands);

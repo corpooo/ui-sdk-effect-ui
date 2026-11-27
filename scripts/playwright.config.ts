@@ -37,19 +37,21 @@ const expected = Object.fromEntries(
 // Our own spec files, by the project that runs them. Every fixture of ours
 // has an `effect.ts`, so `own` runs every file, and a fixture that's missing
 // skips its tests, which the coverage gate fails. `own-ssr` runs the files
-// that open a fixture with an `effect-ssr.ts`.
+// that open a fixture with an `effect-ssr.ts`, by name, as upstream's specs do.
 const ownFiles = readdirSync(ownSpecs).filter((file) => file.endsWith(".spec.ts"));
 const opened = (file: string) =>
   [...readFileSync(join(ownSpecs, file), "utf8").matchAll(/\bopen\(\s*"own-([\w-]+)"/g)].map(
     ([, name]) => name!,
   );
+const hasOwnFixture = (name: string, framework: string) =>
+  ["ts", "tsx"].some((extension) =>
+    existsSync(join(ownFixtures, name, `${framework}.${extension}`)),
+  );
 const own = Object.fromEntries(
   Object.entries(ownProjects).map(([project, framework]) => [
     project,
     framework.endsWith("-ssr")
-      ? ownFiles.filter((file) =>
-          opened(file).some((name) => existsSync(join(ownFixtures, name, `${framework}.ts`))),
-        )
+      ? ownFiles.filter((file) => opened(file).some((name) => hasOwnFixture(name, framework)))
       : ownFiles,
   ]),
 );

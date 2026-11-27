@@ -1,6 +1,8 @@
 // Two tabs for keys dispatched in one task, which upstream's fixtures never
 // send: "Kept" keeps its own value, and "Held" gets it from the fixture's
-// Model, which takes every request. specs/tabs-keys.spec.ts presses them.
+// Model, which takes every request. "Requests" counts what both asked for, so
+// a spec can tell keys that went back to the start from keys that did
+// nothing. specs/tabs-keys.spec.ts presses them.
 import { Tabs, TabsProps } from "@corpooo/ui-sdk-effect-ui/tabs";
 import { UiSchema } from "@effect/ui";
 import { BrowserHost, Html } from "@effect/ui/html";
@@ -10,19 +12,20 @@ const values = ["one", "two", "three", "four"];
 const label = (value: string) => value[0]!.toUpperCase() + value.slice(1);
 
 const FixtureMessage = UiSchema.TaggedEnum({
-  RequestedValueHeld: { value: Schema.NullOr(Schema.String) },
+  RequestedValueTabs: { held: Schema.Boolean, value: Schema.NullOr(Schema.String) },
 });
 
 function fixture() {
   return Html.component({
     name: "TabsKeysFixture",
-    model: Schema.Struct({ held: Schema.NullOr(Schema.String) }),
+    model: Schema.Struct({ held: Schema.NullOr(Schema.String), requests: Schema.Number }),
     message: FixtureMessage,
   }).make({
-    init: () => ({ held: "one" }),
+    init: () => ({ held: "one", requests: 0 }),
     update: ($, message) =>
       FixtureMessage.match(message, {
-        RequestedValueHeld: ({ value }) => $.evolve({ held: value }),
+        RequestedValueTabs: ({ held, value }) =>
+          $.evolve({ requests: (count) => count + 1, ...(held ? { held: value } : {}) }),
       }),
     view: (h, model) => {
       const tabsNamed = (name: string, props: typeof TabsProps.Type) =>
@@ -31,7 +34,7 @@ function fixture() {
           props,
           onEmit: {
             RequestedValue: ({ value }) =>
-              name === "Held" ? FixtureMessage.RequestedValueHeld({ value }) : undefined,
+              FixtureMessage.RequestedValueTabs({ held: name === "Held", value }),
           },
           view: (tabs) =>
             tabs.root(h.div.class("tabs")).children(
@@ -56,6 +59,9 @@ function fixture() {
           tabsNamed("Kept", { initialValue: "one" }),
           tabsNamed("Held", { value: model.held }),
           h.button("After"),
+          h.output
+            .attrs({ role: "status", "aria-label": "Requests" })
+            .children(`${model.requests}`),
         );
     },
   });

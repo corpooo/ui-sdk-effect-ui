@@ -3,18 +3,22 @@ import { buttonNamed, expect, groupNamed, test } from "../upstream/ui/tests/fixt
 type Page = Parameters<typeof buttonNamed>[0];
 type Locator = ReturnType<typeof buttonNamed>;
 
-// Clicks each button in one task, as a script or a fast replay can and a person can't.
+// Clicks each button in one task, as a script or a fast replay can and a
+// person can't. Each press asks once, so presses that come back to the start
+// did something.
 async function pressInOneTask(page: Page, buttons: Locator[]) {
   const handles = await Promise.all(buttons.map((button) => button.elementHandle()));
   await page.evaluate(
     (elements) => elements.forEach((element) => (element as HTMLElement).click()),
     handles,
   );
+  await expect(page.getByRole("status", { name: "Requests" })).toHaveText(`${buttons.length}`);
 }
 
-// AGENTS.md, Known limits: for a value the parent holds, core judges the
-// second of two requests in one task against the old value. A test marked
-// with it flips red once that is fixed.
+// AGENTS.md, Known limits: for a value the parent holds, core makes and
+// judges the second of two requests in one task from the old value. A test
+// marked with it flips red once that is fixed. The Kept twin of each passes
+// on this page, so a broken page fails it, not only the marked one.
 const knownLimit = (owner: string) =>
   test.fail(owner === "Held", "Known limit for a value the parent holds, see AGENTS.md.");
 

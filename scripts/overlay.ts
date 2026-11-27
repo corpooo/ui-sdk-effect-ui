@@ -82,6 +82,14 @@ export function restore() {
 /** Links every fixture entry into the playground, over whatever an earlier run left. */
 export function apply() {
   restore();
+  // A fixture of our own is ours alone: upstream must have no fixture of its name, for any framework.
+  for (const name of owned()) {
+    if (existsSync(join(upstreamFixtures, name))) {
+      throw new Error(
+        `Upstream has a fixture named ${name}, so rename fixtures/own/${name.slice(4)}.`,
+      );
+    }
+  }
   for (const { link, target } of planned()) {
     if (lstatSync(link, { throwIfNoEntry: false })) {
       throw new Error(`${link} exists upstream, so our fixture would replace it.`);

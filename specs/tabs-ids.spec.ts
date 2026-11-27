@@ -19,19 +19,29 @@ const references = (page: Page, from: "page" | "server") =>
 const inPage = (page: Page) => references(page, "page");
 const onServer = (page: Page) => references(page, "server");
 
-// From the page's first script, every id or reference that changed to
-// another value once set, as "element attribute old → new". A tab's
-// `aria-controls` comes and goes with its panel, which the snapshots check.
+// From the page's first script, every id or reference that took another
+// value than the last one it had, as "element attribute old → new", even
+// with a removal between. A tab's `aria-controls` comes and goes with its
+// panel, which the snapshots check.
 const recordRewrites = (page: Page) =>
   page.addInitScript(() => {
     const rewrites: string[] = [];
+    const last = new WeakMap<Node, Map<string, string>>();
     Object.assign(window, { __rewrites: rewrites });
     new MutationObserver((records) => {
       for (const { target, attributeName, oldValue } of records) {
-        const now = (target as Element).getAttribute(attributeName!);
-        if (oldValue !== null && now !== null && now !== oldValue) {
-          rewrites.push(`${(target as Element).localName} ${attributeName} ${oldValue} → ${now}`);
+        const element = target as Element;
+        const seen = last.get(element) ?? new Map<string, string>();
+        last.set(element, seen);
+        const before = seen.get(attributeName!) ?? oldValue;
+        const now = element.getAttribute(attributeName!);
+        if (now === null) {
+          continue;
         }
+        if (before !== null && before !== now) {
+          rewrites.push(`${element.localName} ${attributeName} ${before} → ${now}`);
+        }
+        seen.set(attributeName!, now);
       }
     }).observe(document, {
       subtree: true,
@@ -40,33 +50,42 @@ const recordRewrites = (page: Page) =>
     });
   });
 
-const rewrites = (page: Page) => page.evaluate(() => (window as any).__rewrites as string[]);
+const rewrites = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __rewrites: string[] }).__rewrites);
+// What `fixtures/hydrate.ts` records, so a page that never hydrated fails.
 const hydrationErrors = (page: Page) =>
-  page.evaluate(() => ((window as any).__hydrationErrors as string[] | undefined) ?? []);
+  page.evaluate(() => (window as unknown as { __hydrationErrors: string[] }).__hydrationErrors);
 
 test.beforeEach(({ page }) => recordRewrites(page));
 
 test("tabs and panels take the author's ids and point at each other by them", async ({
   page,
   open,
+  framework,
 }) => {
   await open("own-tabs-ids");
-  expect(await inPage(page)).toEqual([
-    "tab author-tab-one →  / author-panel-one",
-    "tab author-tab-two →  / ",
-    "tab author-tab-three →  / ",
-    "tabpanel author-panel-one → author-tab-one / ",
-  ]);
+  // Polled, since a mount's result can arrive a task after the page is up.
+  await expect
+    .poll(() => inPage(page))
+    .toEqual([
+      "tab author-tab-one →  / author-panel-one",
+      "tab author-tab-two →  / ",
+      "tab author-tab-three →  / ",
+      "tabpanel author-panel-one → author-tab-one / ",
+    ]);
   await tabNamed(page, "Two").click();
-  await expect(page.getByRole("tabpanel", { name: "Two" })).toHaveId("author-panel-two");
-  expect(await inPage(page)).toEqual([
-    "tab author-tab-one →  / ",
-    "tab author-tab-two →  / author-panel-two",
-    "tab author-tab-three →  / ",
-    "tabpanel author-panel-two → author-tab-two / ",
-  ]);
+  await expect
+    .poll(() => inPage(page))
+    .toEqual([
+      "tab author-tab-one →  / ",
+      "tab author-tab-two →  / author-panel-two",
+      "tab author-tab-three →  / ",
+      "tabpanel author-panel-two → author-tab-two / ",
+    ]);
   expect(await rewrites(page)).toEqual([]);
-  expect(await hydrationErrors(page)).toEqual([]);
+  if (framework.endsWith("-ssr")) {
+    expect(await hydrationErrors(page)).toEqual([]);
+  }
 });
 
 test("the server's HTML has the author's ids, and hydration keeps them", async ({
@@ -85,10 +104,9 @@ test("the server's HTML has the author's ids, and hydration keeps them", async (
     "tab author-tab-three →  / ",
     "tabpanel author-panel-one → author-tab-one / ",
   ]);
-  expect(await inPage(page)).toEqual([
-    "tab author-tab-one →  / author-panel-one",
-    ...served.slice(1),
-  ]);
+  await expect
+    .poll(() => inPage(page))
+    .toEqual(["tab author-tab-one →  / author-panel-one", ...served.slice(1)]);
   expect(await rewrites(page)).toEqual([]);
   expect(await hydrationErrors(page)).toEqual([]);
 });
