@@ -16,6 +16,7 @@
   "exports": {
     "./button": "./src/button.ts",
     "./separator": "./src/separator.ts",
+    "./tabs": "./src/tabs.ts",
     "./toggle": "./src/toggle.ts",
     "./package.json": "./package.json"
   },
