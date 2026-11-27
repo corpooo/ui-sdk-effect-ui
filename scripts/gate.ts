@@ -171,10 +171,21 @@ export function problems(input: {
       found.push(`${file} opens ${fixture}, and we have no fixture of that name.`);
     }
   }
+  // Both ways: a fixture it names that went, and one it doesn't name, which nothing would miss.
   for (const [framework, names] of Object.entries(input.baseline)) {
     for (const name of names) {
       if (!all(framework).includes(name)) {
         found.push(`coverage-baseline.json names ${name} for ${framework}, and we don't ship it.`);
+      }
+    }
+  }
+  for (const framework of new Set([
+    ...Object.keys(input.shipped),
+    ...Object.keys(input.ownShipped),
+  ])) {
+    for (const name of all(framework)) {
+      if (!input.baseline[framework]?.includes(name)) {
+        found.push(`Name ${name} under ${framework} in coverage-baseline.json.`);
       }
     }
   }

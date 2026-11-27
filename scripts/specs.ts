@@ -5,7 +5,7 @@
 // like a spec file or `-g`. `--restore` only restores.
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";
-import { apply, planned, restore, upstreamChanges } from "./overlay.ts";
+import { apply, planned, restore, unpinned, upstreamChanges } from "./overlay.ts";
 import {
   playwrightConfig,
   port,
@@ -94,7 +94,11 @@ async function run() {
     return built || 1;
   }
   // Resolves once this run's own server listens, and fails when it can't
-  // bind, so the specs never run against whatever else holds the port.
+  // bind, so the specs never run against whatever else holds the port. Its
+  // own SIGTERM and stdin handlers exit before the links come out, so ours
+  // are the only ones left.
+  const term = process.listeners("SIGTERM");
+  const end = process.stdin.listeners("end");
   const server = await preview({
     root: upstreamPlayground,
     logLevel: "error",
@@ -104,6 +108,16 @@ async function run() {
       `The playground can't serve on port ${port}: ${error.message}. Set PLAYGROUND_PORT.`,
     );
   });
+  for (const listener of process.listeners("SIGTERM")) {
+    if (!term.includes(listener)) {
+      process.off("SIGTERM", listener);
+    }
+  }
+  for (const listener of process.stdin.listeners("end")) {
+    if (!end.includes(listener)) {
+      process.stdin.off("end", listener);
+    }
+  }
   if (!server) {
     return 1;
   }
@@ -126,6 +140,12 @@ async function run() {
 
 // First, so an earlier run's report can't pass the coverage gate for a run that never started.
 rmSync(report, { force: true });
+// The specs, the playground and core all come from the pinned commit.
+const moved = unpinned();
+if (moved) {
+  console.error(moved);
+  process.exit(1);
+}
 mkdirSync(results, { recursive: true });
 apply();
 console.log(`Overlaid ${planned().length} fixture files.`);

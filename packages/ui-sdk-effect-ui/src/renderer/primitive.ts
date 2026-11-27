@@ -45,7 +45,7 @@ import {
   commit,
   partState,
   present,
-  sameValue,
+  sameSlotState,
   subscribe,
   takeOwnId,
   unwatched,
@@ -243,15 +243,11 @@ function handOver(handle: Handle) {
 // Core listens for every event itself: an Effect UI handler gets a payload, and core's need the event.
 const host = { by: "framework", attaches: [] } as const;
 
-const sameRecord = (a: Record<string, unknown>, b: Record<string, unknown>) => {
-  const keys = Object.keys(a);
-  return keys.length === Object.keys(b).length && keys.every((key) => sameValue(a[key], b[key]));
-};
 const same = (a: Snapshot, b: Snapshot | undefined) =>
   b !== undefined &&
   a.present === b.present &&
-  sameRecord(a.attrs, b.attrs) &&
-  sameRecord(a.state, b.state);
+  sameSlotState(a.attrs, b.attrs) &&
+  sameSlotState(a.state, b.state);
 
 // A message reaches the component as an event on the part's element, which
 // Effect UI's handler below answers with the message. An event is delivered

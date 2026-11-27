@@ -40,12 +40,6 @@ for (const framework of frameworks) {
   console.log(
     `${framework} fixtures: ${names.length} of upstream's ${available.length} (${names.join(", ")}).`,
   );
-  const unnamed = [...names, ...(ourOwn[framework] ?? [])].filter(
-    (name) => !baseline[framework]?.includes(name),
-  );
-  if (unnamed.length) {
-    console.log(`Add ${unnamed.join(", ")} to ${framework} in coverage-baseline.json.`);
-  }
 }
 const own = owned();
 console.log(`Own fixtures, counted apart: ${own.length} (${own.join(", ")}).`);

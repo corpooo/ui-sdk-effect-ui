@@ -131,9 +131,22 @@ export function apply() {
   }
 }
 
+const git = (directory: string, ...args: string[]) =>
+  execFileSync("git", ["-C", directory, ...args], { encoding: "utf8" }).trim();
+
 /** What `git status` shows in the upstream checkout: empty when it is as pinned. */
 export function upstreamChanges() {
-  return execFileSync("git", ["-C", upstream, "status", "--porcelain"], {
-    encoding: "utf8",
-  }).trim();
+  return git(upstream, "status", "--porcelain");
+}
+
+/**
+ * Why the upstream checkout isn't at the commit this checkout pins, or
+ * nothing when it is. The pin is the index's, so one staged to move it counts.
+ */
+export function unpinned() {
+  const pinned = git(join(upstream, "../.."), "rev-parse", ":upstream/ui");
+  const checkedOut = git(upstream, "rev-parse", "HEAD");
+  return pinned === checkedOut
+    ? ""
+    : `upstream/ui is at ${checkedOut.slice(0, 8)}, and the pin is ${pinned.slice(0, 8)}. Run \`git submodule update\`, then \`pnpm upstream\`.`;
 }

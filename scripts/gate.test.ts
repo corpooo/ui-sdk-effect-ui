@@ -31,7 +31,7 @@ const covered = {
   ownShipped: { effect: ["own-tabs-keys"], "effect-ssr": [] },
   opened: ["toggle", "own-tabs-keys"],
   missing: [],
-  baseline: { effect: ["toggle"], "effect-ssr": ["toggle"] },
+  baseline: { effect: ["toggle", "own-tabs-keys"], "effect-ssr": ["toggle"] },
   exempt: {},
 };
 
@@ -144,7 +144,10 @@ test("a fixture no spec file opens is a problem", () => {
       counts,
       shipped: { effect: ["toggle", "toggle-kitchen-sink"], "effect-ssr": ["toggle"] },
     }),
-  ).toEqual(["The fixture toggle-kitchen-sink is opened by no spec file, so nothing tests it."]);
+  ).toEqual([
+    "The fixture toggle-kitchen-sink is opened by no spec file, so nothing tests it.",
+    "Name toggle-kitchen-sink under effect in coverage-baseline.json.",
+  ]);
 });
 
 test("an own fixture no spec opens, or one the baseline names that is gone, is a problem", () => {
@@ -159,6 +162,13 @@ test("an own fixture no spec opens, or one the baseline names that is gone, is a
       baseline: { effect: ["toggle", "own-tabs-keys"], "effect-ssr": ["toggle", "own-tabs-keys"] },
     }),
   ).toEqual(["coverage-baseline.json names own-tabs-keys for effect-ssr, and we don't ship it."]);
+});
+
+test("a fixture the baseline doesn't name is a problem", () => {
+  const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
+  expect(
+    problems({ ...covered, counts, baseline: { effect: ["toggle", "own-tabs-keys"] } }),
+  ).toEqual(["Name toggle under effect-ssr in coverage-baseline.json."]);
 });
 
 test("a test that skips for want of a fixture is a problem when we have it, or it is ours and gone", () => {
