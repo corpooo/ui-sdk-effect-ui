@@ -21,5 +21,8 @@ export const report = at("../test-results/report.json");
 export const baseline = at("../coverage-baseline.json");
 export const playwrightConfig = at("./playwright.config.ts");
 
+/** Where the playground is served. Upstream's config reads the same variable for its base URL. */
+export const port = process.env.PLAYGROUND_PORT ?? "5300";
+
 /** The Playwright projects the overlay adds, one per fixture file name. */
 export const frameworks = ["effect", "effect-ssr"];

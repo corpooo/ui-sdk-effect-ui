@@ -17,7 +17,4 @@ export default defineConfig({
   test: {
     include: ["packages/*/tests/**/*.test.ts", "scripts/**/*.test.ts"],
   },
-  run: {
-    cache: true,
-  },
 });

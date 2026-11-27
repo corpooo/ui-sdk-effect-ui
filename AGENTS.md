@@ -17,7 +17,7 @@ CI runs these five in that order, in `.github/workflows/ci.yml`.
 
 ## The spec run
 
-`pnpm specs` symlinks each `fixtures/<name>/effect.ts` and `effect-ssr.ts` to where upstream's playground looks for `<name>/<framework>.ts`, builds the playground, runs Playwright with the `effect` and `effect-ssr` projects from `scripts/playwright.config.ts`, and removes the links. A run that was killed leaves links behind. The next run removes them, and so does `pnpm specs --restore`.
+`pnpm specs` symlinks each `fixtures/<name>/effect.ts` and `effect-ssr.ts` to where upstream's playground looks for `<name>/<framework>.ts`, builds and serves the playground, runs Playwright with the `effect` and `effect-ssr` projects from `scripts/playwright.config.ts`, and removes the links. The runner serves the playground itself and stops it on every way out, a kill included. It serves on port 5300, or `PLAYGROUND_PORT`. Only a `kill -9` leaves links and a server behind: the next run removes the links, as does `pnpm specs --restore`, and the server has to be stopped by hand.
 
 A spec skips itself where its fixture is missing, so a green run proves nothing by itself. The coverage gate fails when a spec file that opens a fixture we ship ran no test, or when we ship fewer fixtures than `coverage-baseline.json` says. A spec file that skips every test for us by its own rule goes in that file's `exempt`, with why.
 
