@@ -90,9 +90,10 @@ export function problems(input: {
   args: string;
   /** Upstream's React fixtures, which name every fixture there is to have. */
   available: string[];
-  shipped: string[];
-  /** The number of fixtures we had when it was last raised. */
-  baseline: number;
+  /** The fixtures we ship, by framework. */
+  shipped: Record<string, string[]>;
+  /** The number of fixtures each framework had when it was last raised. */
+  baseline: Record<string, number>;
   /** Spec files that skip every test for us by their own rule, each with why. */
   exempt: Record<string, string>;
 }) {
@@ -128,17 +129,18 @@ export function problems(input: {
       }
     }
   }
-  for (const name of input.shipped) {
+  for (const name of new Set(Object.values(input.shipped).flat())) {
     if (!input.available.includes(name)) {
       found.push(
         `fixtures/${name} has no React fixture of that name upstream, so no spec opens it.`,
       );
     }
   }
-  if (input.shipped.length < input.baseline) {
-    found.push(
-      `We ship ${input.shipped.length} fixtures, fewer than the baseline of ${input.baseline}.`,
-    );
+  for (const [framework, baseline] of Object.entries(input.baseline)) {
+    const count = input.shipped[framework]?.length ?? 0;
+    if (count < baseline) {
+      found.push(`We ship ${count} ${framework} fixtures, fewer than the baseline of ${baseline}.`);
+    }
   }
   return found;
 }

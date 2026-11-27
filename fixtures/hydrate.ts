@@ -12,9 +12,10 @@ type Recorded = Window & { __hydrationErrors: string[]; __serverHtml: string };
 
 /**
  * Resolves once the fixture has adopted the server's HTML. Effect UI reports
- * no mismatch: where a view stops matching the server's nodes, it builds new
- * ones in their place. So every server element that left the page is recorded
- * as one, beside whatever is logged as an error or a warning meanwhile.
+ * no mismatch: it patches an attribute or text that differs, and builds new
+ * nodes where a view stops matching the server's. So every change to the
+ * server's nodes until then is recorded as one, beside whatever is logged as
+ * an error or a warning meanwhile.
  */
 async function hydrateFixture(root: HTMLElement, fixture: Fixture) {
   const errors: string[] = [];
@@ -24,7 +25,8 @@ async function hydrateFixture(root: HTMLElement, fixture: Fixture) {
   root.innerHTML = html;
   // What the page shows before hydration.
   recorded.__serverHtml = root.innerHTML;
-  const served = [...root.querySelectorAll("*")];
+  const changes = new MutationObserver(() => {});
+  changes.observe(root, { subtree: true, attributes: true, characterData: true, childList: true });
   for (const level of ["warn", "error"] as const) {
     const log = console[level];
     console[level] = (...args: unknown[]) => {
@@ -40,11 +42,17 @@ async function hydrateFixture(root: HTMLElement, fixture: Fixture) {
       return yield* Effect.never;
     }).pipe(Effect.scoped, Effect.runFork),
   );
-  for (const element of served) {
-    if (!element.isConnected) {
-      errors.push(`Hydration built a new <${element.localName}> in place of the server's.`);
-    }
+  for (const change of changes.takeRecords()) {
+    const node = change.target instanceof Element ? `<${change.target.localName}>` : "text";
+    errors.push(
+      change.type === "attributes"
+        ? `Hydration changed ${change.attributeName} on the server's ${node}.`
+        : change.type === "childList"
+          ? `Hydration changed the children of the server's ${node}.`
+          : "Hydration changed the server's text.",
+    );
   }
+  changes.disconnect();
 }
 
 export { hydrateFixture };

@@ -2,10 +2,10 @@
 // run can be green while it checks nothing. After `pnpm specs`, this says
 // which of upstream's fixtures we have and what ran for them, and fails when
 // a spec file for a fixture we ship ran no test, or we ship fewer fixtures
-// than coverage-baseline.json says. A spec file that skips every test for us
-// by its own rule is listed there as exempt, with why. Our own specs and
-// fixtures are counted apart, and each own spec file must run a test, unless
-// it holds only `test.fixme`s.
+// for a framework than coverage-baseline.json says. A spec file that skips
+// every test for us by its own rule is listed there as exempt, with why. Our
+// own specs and fixtures are counted apart, and each own spec file must run
+// a test, unless it holds only `test.fixme`s.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { problems, ran, tally, type Counts, type Report } from "./gate.ts";
@@ -24,7 +24,7 @@ if (!existsSync(reportFile)) {
 }
 const report = JSON.parse(readFileSync(reportFile, "utf8")) as Report;
 const { fixtures: baseline, exempt } = JSON.parse(readFileSync(baselineFile, "utf8")) as {
-  fixtures: number;
+  fixtures: Record<string, number>;
   exempt: Record<string, string>;
 };
 
@@ -33,9 +33,16 @@ const available = readdirSync(upstreamFixtures).filter((name) =>
   existsSync(join(upstreamFixtures, name, "react.tsx")),
 );
 const ours = shipped();
-console.log(`Fixtures: ${ours.length} of upstream's ${available.length} (${ours.join(", ")}).`);
-if (ours.length > baseline) {
-  console.log(`That's more than the baseline of ${baseline}: raise it in coverage-baseline.json.`);
+for (const framework of frameworks) {
+  const names = ours[framework] ?? [];
+  console.log(
+    `${framework} fixtures: ${names.length} of upstream's ${available.length} (${names.join(", ")}).`,
+  );
+  if (names.length > (baseline[framework] ?? 0)) {
+    console.log(
+      `That's more than the baseline of ${baseline[framework] ?? 0}: raise it in coverage-baseline.json.`,
+    );
+  }
 }
 const own = owned();
 console.log(`Own fixtures, counted apart: ${own.length} (${own.join(", ")}).`);

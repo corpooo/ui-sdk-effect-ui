@@ -43,10 +43,17 @@ export function planned(): Link[] {
   return [...links(fixtures, (name) => name), ...links(ownFixtures, (name) => `own-${name}`)];
 }
 
-/** The names of upstream's fixtures we have an `effect` entry for. Our own fixtures aren't among them. */
+/** The names of upstream's fixtures we have an entry for, by framework. Our own fixtures aren't among them. */
 export function shipped() {
-  return directories(fixtures).filter((name) =>
-    ["ts", "tsx"].some((extension) => existsSync(join(fixtures, name, `effect.${extension}`))),
+  return Object.fromEntries(
+    frameworks.map((framework) => [
+      framework,
+      directories(fixtures).filter((name) =>
+        ["ts", "tsx"].some((extension) =>
+          existsSync(join(fixtures, name, `${framework}.${extension}`)),
+        ),
+      ),
+    ]),
   );
 }
 

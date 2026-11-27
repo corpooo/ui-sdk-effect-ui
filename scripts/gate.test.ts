@@ -27,8 +27,8 @@ const covered = {
   own: {},
   args: "",
   available: ["tabs", "toggle"],
-  shipped: ["toggle"],
-  baseline: 1,
+  shipped: { effect: ["toggle"], "effect-ssr": ["toggle"] },
+  baseline: { effect: 1, "effect-ssr": 1 },
   exempt: {},
 };
 
@@ -128,14 +128,21 @@ test("a run narrowed by Playwright arguments is a problem", () => {
 
 test("fewer fixtures than the baseline is a problem", () => {
   const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
-  expect(problems({ ...covered, counts, baseline: 2 })).toEqual([
-    "We ship 1 fixtures, fewer than the baseline of 2.",
+  expect(problems({ ...covered, counts, baseline: { effect: 2, "effect-ssr": 1 } })).toEqual([
+    "We ship 1 effect fixtures, fewer than the baseline of 2.",
   ]);
+});
+
+test("a hydration fixture that goes missing is a problem", () => {
+  const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
+  expect(
+    problems({ ...covered, counts, shipped: { effect: ["toggle"], "effect-ssr": [] } }),
+  ).toEqual(["We ship 0 effect-ssr fixtures, fewer than the baseline of 1."]);
 });
 
 test("a fixture upstream has no React fixture for is a problem", () => {
   const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
-  expect(problems({ ...covered, counts, shipped: ["toggle", "togle"], baseline: 1 })).toEqual([
-    "fixtures/togle has no React fixture of that name upstream, so no spec opens it.",
-  ]);
+  expect(
+    problems({ ...covered, counts, shipped: { effect: ["toggle", "togle"] }, baseline: {} }),
+  ).toEqual(["fixtures/togle has no React fixture of that name upstream, so no spec opens it."]);
 });

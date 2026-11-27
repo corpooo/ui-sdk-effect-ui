@@ -60,9 +60,9 @@ const ended = (child: ChildProcess) =>
     child.on("close", (code) => end(code ?? 1));
   });
 
-// Ctrl+C and a kill stop whatever runs, so the run ends and cleans up below.
+// Ctrl+C, a kill and a closed terminal stop whatever runs, so the run ends and cleans up below.
 let interrupted = false;
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.on(signal, () => {
     interrupted = true;
     for (const child of running) {
@@ -73,16 +73,18 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 
 const errorsOnly: SpawnOptions["stdio"] = ["ignore", "ignore", "inherit"];
 
+const answers = () =>
+  fetch(`http://localhost:${port}`).then(
+    (response) => response.ok,
+    () => false,
+  );
+
 /** Whether the playground answers before its server gives up. */
 async function serving(server: Promise<number>) {
   let gone = false;
   void server.then(() => (gone = true));
   for (let waited = 0; waited < 60_000 && !gone; waited += 100) {
-    const up = await fetch(`http://localhost:${port}`).then(
-      (response) => response.ok,
-      () => false,
-    );
-    if (up) {
+    if (await answers()) {
       return true;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -106,6 +108,11 @@ async function run() {
   );
   if (built !== 0 || interrupted) {
     return built || 1;
+  }
+  // Else the specs could run against whatever answers there, before our preview fails to bind.
+  if (await answers()) {
+    console.error(`Something already serves on port ${port}. Stop it, or set PLAYGROUND_PORT.`);
+    return 1;
   }
   const preview = start("vite", ["preview", "--port", port, "--strictPort"], {
     cwd: upstreamPlayground,

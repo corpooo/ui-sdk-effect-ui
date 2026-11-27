@@ -1,5 +1,5 @@
 {
-  "fixtures": 5,
+  "fixtures": { "effect": 5, "effect-ssr": 2 },
   "exempt": {
     "elements.spec.ts": "Custom elements only: it skips every framework but web."
   }
