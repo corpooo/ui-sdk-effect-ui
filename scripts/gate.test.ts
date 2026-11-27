@@ -1,14 +1,11 @@
 import { expect, test } from "vite-plus/test";
 import { problems, tally, type Report } from "./gate.ts";
 
-// A test as the report gives it: by its status, or as "fixme" or "fail" for
-// a `test.fixme`, and a `test.fail` that failed.
+// A test as the report gives it: by its status, or as "fixme" for a `test.fixme`.
 const entry = (projectName: string, status: string) =>
   status === "fixme"
     ? { projectName, status: "skipped", annotations: [{ type: "fixme" }] }
-    : status === "fail"
-      ? { projectName, status: "expected", expectedStatus: "failed" }
-      : { projectName, status };
+    : { projectName, status };
 
 const report = (tests: Record<string, string[]>, projectName = "effect"): Report => ({
   config: {},
@@ -38,25 +35,19 @@ const covered = {
 test("tests are counted by spec file, inside describe blocks too", () => {
   const counts = tally(
     report({
-      "toggle.spec.ts": ["expected", "flaky", "skipped", "unexpected", "fail", "fixme"],
+      "toggle.spec.ts": ["expected", "flaky", "skipped", "unexpected", "fixme"],
     }),
   );
   expect(counts.get("effect")?.get("toggle.spec.ts")).toEqual({
     passed: 2,
     skipped: 1,
     failed: 1,
-    expectedFail: 1,
     fixme: 1,
   });
 });
 
 test("a run whose expected spec files ran tests has no problems", () => {
   const counts = tally(report({ "toggle.spec.ts": ["expected", "skipped"] }));
-  expect(problems({ ...covered, counts })).toEqual([]);
-});
-
-test("a test that fails as expected is a test that ran", () => {
-  const counts = tally(report({ "toggle.spec.ts": ["fail"] }));
   expect(problems({ ...covered, counts })).toEqual([]);
 });
 
@@ -71,7 +62,7 @@ test("a spec of our own is counted by its file name", () => {
 });
 
 test("a spec of our own that ran a test has no problems", () => {
-  expect(problems({ ...withOwn, counts: ownCounts(["expected", "fail", "fixme"]) })).toEqual([]);
+  expect(problems({ ...withOwn, counts: ownCounts(["expected", "fixme"]) })).toEqual([]);
 });
 
 test("a spec of our own that only skipped, or is missing from the run, is a problem", () => {

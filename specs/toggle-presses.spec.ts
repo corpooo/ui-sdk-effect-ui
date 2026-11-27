@@ -16,20 +16,29 @@ async function pressInOneTask(page: Page, buttons: Locator[]) {
 }
 
 // AGENTS.md, Known limits: for a value the parent holds, core makes and
-// judges the second of two requests in one task from the old value. A test
-// marked with it flips red once that is fixed. The Kept twin of each passes
-// on this page, so a broken page fails it, not only the marked one.
-const knownLimit = (owner: string) =>
-  test.fail(owner === "Held", "Known limit for a value the parent holds, see AGENTS.md.");
+// judges the second of two requests in one task from the old value. Where
+// that changes the outcome, the Held test is titled a known limit, asserts
+// what happens today, and fails once that is fixed. Its Kept twin asserts
+// the right outcome on the same page.
+const title = (owner: string, right: string, today: string) =>
+  owner === "Held" ? `Held: known limit, ${today}, see AGENTS.md` : `${owner}: ${right}`;
 
 for (const owner of ["Kept", "Held"]) {
-  test(`${owner}: a toggle pressed twice in one task is unpressed`, async ({ page, open }) => {
-    knownLimit(owner);
-    await open("own-toggle-presses");
-    const toggle = buttonNamed(page, `${owner} toggle`);
-    await pressInOneTask(page, [toggle, toggle]);
-    await expect(toggle).toHaveAttribute("aria-pressed", "false");
-  });
+  const held = owner === "Held";
+
+  test(
+    title(
+      owner,
+      "a toggle pressed twice in one task is unpressed",
+      "a toggle pressed twice in one task stays pressed",
+    ),
+    async ({ page, open }) => {
+      await open("own-toggle-presses");
+      const toggle = buttonNamed(page, `${owner} toggle`);
+      await pressInOneTask(page, [toggle, toggle]);
+      await expect(toggle).toHaveAttribute("aria-pressed", `${held}`);
+    },
+  );
 
   test(`${owner}: two toggles of a group pressed in one task leave the second pressed`, async ({
     page,
@@ -46,30 +55,36 @@ for (const owner of ["Kept", "Held"]) {
     await expect(b).toHaveAttribute("aria-pressed", "true");
   });
 
-  test(`${owner}: one toggle of a group pressed twice in one task is unpressed`, async ({
-    page,
-    open,
-  }) => {
-    knownLimit(owner);
-    await open("own-toggle-presses");
-    const a = groupNamed(page, `${owner} single`).getByRole("button", { name: "A" });
-    await pressInOneTask(page, [a, a]);
-    await expect(a).toHaveAttribute("aria-pressed", "false");
-  });
+  test(
+    title(
+      owner,
+      "one toggle of a group pressed twice in one task is unpressed",
+      "one toggle of a group pressed twice in one task stays pressed",
+    ),
+    async ({ page, open }) => {
+      await open("own-toggle-presses");
+      const a = groupNamed(page, `${owner} single`).getByRole("button", { name: "A" });
+      await pressInOneTask(page, [a, a]);
+      await expect(a).toHaveAttribute("aria-pressed", `${held}`);
+    },
+  );
 
-  test(`${owner}: two toggles of a multiple group pressed in one task are both pressed`, async ({
-    page,
-    open,
-  }) => {
-    knownLimit(owner);
-    await open("own-toggle-presses");
-    const group = groupNamed(page, `${owner} multiple`);
-    const [a, b] = [
-      group.getByRole("button", { name: "A" }),
-      group.getByRole("button", { name: "B" }),
-    ];
-    await pressInOneTask(page, [a, b]);
-    await expect(a).toHaveAttribute("aria-pressed", "true");
-    await expect(b).toHaveAttribute("aria-pressed", "true");
-  });
+  test(
+    title(
+      owner,
+      "two toggles of a multiple group pressed in one task are both pressed",
+      "of two toggles of a multiple group pressed in one task only the second is pressed",
+    ),
+    async ({ page, open }) => {
+      await open("own-toggle-presses");
+      const group = groupNamed(page, `${owner} multiple`);
+      const [a, b] = [
+        group.getByRole("button", { name: "A" }),
+        group.getByRole("button", { name: "B" }),
+      ];
+      await pressInOneTask(page, [a, b]);
+      await expect(a).toHaveAttribute("aria-pressed", `${!held}`);
+      await expect(b).toHaveAttribute("aria-pressed", "true");
+    },
+  );
 }

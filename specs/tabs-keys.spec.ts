@@ -21,23 +21,37 @@ const cases = [
   { name: "away and back", keys: ["ArrowRight", "ArrowLeft"], lands: "One" },
 ];
 
+// AGENTS.md, Known limits: for a value the parent holds, core judges the
+// second of two requests in one task against the old value, so one that
+// returns to it is dropped: focus comes back to One, the selection stays on
+// Two. This case asserts what happens today, and fails once that is fixed.
+const knownLimit = {
+  list: "Held",
+  name: "away and back",
+  requests: 1,
+  lands: "Two",
+  focused: "One",
+};
+
 for (const list of ["Kept", "Held"]) {
   const owner =
     list === "Kept" ? "tabs that keep their value" : "tabs whose parent holds the value";
-  for (const { name, keys, lands } of cases) {
-    test(`${owner}: ${name} in one task selects ${lands}`, async ({ page, open }) => {
-      // AGENTS.md, Known limits: for a value the parent holds, core judges the
-      // second of two requests in one task against the old value, so one that
-      // returns to it is dropped. This flips red once that is fixed. The other
-      // cases on this page pass, so a broken page fails them, not only this.
-      test.fail(list === "Held" && name === "away and back", "Known limit, see AGENTS.md.");
+  for (const { name, keys, lands: wanted } of cases) {
+    const limit = list === knownLimit.list && name === knownLimit.name;
+    const { requests, lands, focused } = limit
+      ? knownLimit
+      : { requests: keys.length, lands: wanted, focused: wanted };
+    const title = limit
+      ? `${owner}: known limit, ${name} in one task selects ${lands}, see AGENTS.md`
+      : `${owner}: ${name} in one task selects ${lands}`;
+    test(title, async ({ page, open }) => {
       await open("own-tabs-keys");
       await pressInOneTask(page, list, keys);
       // Each key asks once, so keys that come back to the start did something.
-      await expect(page.getByRole("status", { name: "Requests" })).toHaveText(`${keys.length}`);
+      await expect(page.getByRole("status", { name: "Requests" })).toHaveText(`${requests}`);
       const tabs = page.getByRole("tablist", { name: list });
       await expect(tabs.getByRole("tab", { selected: true })).toHaveText(lands);
-      expect(await focusedName(page)).toBe(lands);
+      expect(await focusedName(page)).toBe(focused);
       const root = page.locator(".tabs").filter({ has: tabs });
       await expect(root.getByRole("tabpanel")).toHaveText(`${list} ${lands.toLowerCase()}.`);
     });

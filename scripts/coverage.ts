@@ -43,10 +43,9 @@ console.log(`Own fixtures, counted apart: ${own.length} (${own.join(", ")}).`);
 const counts = tally(report);
 const { expected = {}, own: ownFiles = {}, args = "" } = report.config.metadata ?? {};
 
-const row = (file: string, { passed, skipped, failed, expectedFail, fixme }: Counts) =>
-  `  ${file.padEnd(32)} ${passed} / ${skipped} / ${failed} / ${expectedFail} / ${fixme}`;
-const heading = (project: string) =>
-  `\n${project}: passed / skipped / failed / expected-fail / fixme`;
+const row = (file: string, { passed, skipped, failed, fixme }: Counts) =>
+  `  ${file.padEnd(32)} ${passed} / ${skipped} / ${failed} / ${fixme}`;
+const heading = (project: string) => `\n${project}: passed / skipped / failed / fixme`;
 const sorted = (project: string) =>
   [...(counts.get(project) ?? [])].sort(([a], [b]) => a.localeCompare(b));
 

@@ -18,23 +18,15 @@ type Spec = {
   tests: {
     projectName: string;
     status: string;
-    expectedStatus?: string;
     annotations?: { type: string }[];
   }[];
 };
 
-/** A test marked `test.fail` that failed counts as `expectedFail`, and a `test.fixme` as `fixme`, not `skipped`. */
-export type Counts = {
-  passed: number;
-  skipped: number;
-  failed: number;
-  expectedFail: number;
-  fixme: number;
-};
+/** A `test.fixme` counts as `fixme`, not `skipped`. */
+export type Counts = { passed: number; skipped: number; failed: number; fixme: number };
 
-/** Whether any test of the file ran, a test expected to fail included. */
-export const ran = (count: Counts | undefined) =>
-  !!count && count.passed + count.failed + count.expectedFail > 0;
+/** Whether any test of the file ran. */
+export const ran = (count: Counts | undefined) => !!count && count.passed + count.failed > 0;
 
 const specsOf = (suite: Suite): Spec[] => [
   ...(suite.specs ?? []),
@@ -42,7 +34,7 @@ const specsOf = (suite: Suite): Spec[] => [
 ];
 
 type Test = Spec["tests"][number];
-const outcome = ({ status, expectedStatus, annotations = [] }: Test): keyof Counts => {
+const outcome = ({ status, annotations = [] }: Test): keyof Counts => {
   if (status === "skipped") {
     return annotations.some(({ type }) => type === "fixme") ? "fixme" : "skipped";
   }
@@ -50,7 +42,7 @@ const outcome = ({ status, expectedStatus, annotations = [] }: Test): keyof Coun
     return "failed";
   }
   // A flaky test passed on a retry, so it counts as passed.
-  return expectedStatus === "failed" ? "expectedFail" : "passed";
+  return "passed";
 };
 
 /**
@@ -69,7 +61,7 @@ export function tally(report: Report) {
       }
       let count = files.get(file);
       if (!count) {
-        files.set(file, (count = { passed: 0, skipped: 0, failed: 0, expectedFail: 0, fixme: 0 }));
+        files.set(file, (count = { passed: 0, skipped: 0, failed: 0, fixme: 0 }));
       }
       count[outcome(test)]++;
     }

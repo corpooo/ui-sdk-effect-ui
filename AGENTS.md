@@ -11,7 +11,7 @@ Run `pnpm upstream` after a clone and whenever the submodule moves. It installs 
 - `vp check` formats, lints and type-checks.
 - `vp test` runs the unit tests in `packages/*/tests` and `scripts`.
 - `pnpm specs` runs upstream's specs against our fixtures, and our own specs in `specs/`. Arguments go to Playwright, such as `pnpm specs toggle.spec.ts` or `pnpm specs --project=effect -g "tab stop"`.
-- `pnpm coverage` reads the last `pnpm specs` run and fails when it covered less than it should, or when arguments narrowed it. It prints passed, skipped, failed, expected-fail and fixme per spec file and project.
+- `pnpm coverage` reads the last `pnpm specs` run and fails when it covered less than it should, or when arguments narrowed it. It prints passed, skipped, failed and fixme per spec file and project.
 
 CI runs these five in that order, in `.github/workflows/ci.yml`.
 
@@ -21,7 +21,7 @@ CI runs these five in that order, in `.github/workflows/ci.yml`.
 
 A spec skips itself where its fixture is missing, so a green run proves nothing by itself. The coverage gate fails when a spec file that opens a fixture we ship ran no test, or when we ship fewer fixtures than `coverage-baseline.json` says. A spec file that skips every test for us by its own rule goes in that file's `exempt`, with why.
 
-Our own specs and fixtures are counted apart, and never stand in for one of upstream's. The gate fails when a spec file of our own ran no test in a project that runs it, unless all its tests are `test.fixme`s. A `test.fail` that fails counts as run.
+Our own specs and fixtures are counted apart, and never stand in for one of upstream's. The gate fails when a spec file of our own ran no test in a project that runs it, unless all its tests are `test.fixme`s.
 
 ## Adding a spec of our own
 
@@ -31,7 +31,7 @@ Write one where upstream's fixtures don't draw a case, like an id from the consu
 2. Write `specs/<name>.spec.ts`. Import `test`, `expect` and the helpers from `../upstream/ui/tests/fixtures.ts`, and open the page with `open("own-<name>")`, so upstream's page harness serves it. Take `Page` and `Locator` types from a helper, as `Parameters<typeof tabNamed>[0]`, since `@playwright/test` resolves only inside the upstream checkout.
 3. Run `pnpm specs --project=own --project=own-ssr <name>`, break the code on purpose, and see the spec fail before you trust it.
 
-`own` runs every spec file in `specs/`, and `own-ssr` each one that opens a fixture with an `effect-ssr.ts`. A test only for the hydrated page skips itself where `framework` has no `-ssr`, so each file also needs a test that runs client-rendered, or `own` ran none of it. A known limit is a `test.fail` with a comment that points at its entry in Known limits, so it fails the run once fixed. Since a `test.fail` passes on any failure, keep a twin on the same page that passes, like the case with a value the component keeps, and check first that the presses arrived. A case planned for a later component is a `test.fixme` with a short description.
+`own` runs every spec file in `specs/`, and `own-ssr` each one that opens a fixture with an `effect-ssr.ts`. A test only for the hydrated page skips itself where `framework` has no `-ssr`, so each file also needs a test that runs client-rendered, or `own` ran none of it. A known limit is a plain test that asserts today's wrong outcome, so it fails the run once fixed. Title it a known limit and point at its entry in Known limits, in the title and a comment. Keep a twin on the same page that asserts the right outcome, like the case with a value the component keeps, and check first that the presses arrived. A case planned for a later component is a `test.fixme` with a short description.
 
 ## Adding a component
 
@@ -56,7 +56,7 @@ Write one where upstream's fixtures don't draw a case, like an id from the consu
 Known limits:
 
 - A refused change makes core's development build warn a second later that the value stayed. Core expects a refusal as `details.cancel()` inside the callback, which a message can't call.
-- For a value the parent holds, core's state follows the prop one render later. Of two requests dispatched in one task, core makes and judges the second from the old value. One that returns to that value is dropped, like tabs moved away and back. One made from it loses the first, like a toggle or a group's toggle pressed twice, which asks to be pressed both times, or two toggles of a multiple group, of which only the second stays pressed. Presses from a person arrive in separate tasks, and a value the component keeps has no such limit. `specs/tabs-keys.spec.ts` and `specs/toggle-presses.spec.ts` mark these cases `test.fail`.
+- For a value the parent holds, core's state follows the prop one render later. Of two requests dispatched in one task, core makes and judges the second from the old value. One that returns to that value is dropped, like tabs moved away and back. One made from it loses the first, like a toggle or a group's toggle pressed twice, which asks to be pressed both times, or two toggles of a multiple group, of which only the second stays pressed. Presses from a person arrive in separate tasks, and a value the component keeps has no such limit. `specs/tabs-keys.spec.ts` and `specs/toggle-presses.spec.ts` assert these outcomes as known limits.
 - A parent that passes a value and then leaves it out leaves core on the last value it passed and the Model on the one from before, so a server render or a restore shows the older one. Core's development build warns when a value stops being passed.
 - A value a component keeps starts from the Model whenever its parts leave the page and come back. Core can't start uncontrolled tabs on no tab, so tabs asked for none then show the first enabled one.
 - Two parts of one component can't share an element: Effect UI keeps one mount per component and element, and both parts would answer each message.
