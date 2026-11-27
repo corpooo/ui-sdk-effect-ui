@@ -1,0 +1,21 @@
+# What ui-sdk-effect-ui draws on.
+sources:
+  - name: UI SDK
+    how: dependency
+    what: "@ui-sdk/core, the behaviour every component renders, and the Playwright specs that check it, both at the submodule's commit"
+    path: upstream/ui
+    upstream: https://github.com/vercel-labs/ui
+  - name: UI SDK
+    how: rewritten
+    what: the playground fixtures under fixtures/, from its React ones, under Apache-2.0
+    upstream: https://github.com/vercel-labs/ui
+  - name: Effect UI
+    how: dependency
+    what: "@effect/ui, the framework the components render in, from a pkg.pr.new build of one commit"
+    upstream: https://github.com/Effect-TS/ui
+  - name: C-W-D-Harshit/ui
+    how: borrowed
+    what: how an Effect UI fixture mounts in the UI SDK playground, from its docs/effect-ui branch
+    upstream:
+      url: https://github.com/C-W-D-Harshit/ui
+      branch: docs/effect-ui
