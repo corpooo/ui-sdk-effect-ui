@@ -13,7 +13,7 @@ Run `pnpm upstream` after a clone and whenever the submodule moves. It installs 
 - `pnpm specs` runs upstream's specs against our fixtures, and our own specs in `specs/`. Arguments go to Playwright, such as `pnpm specs toggle.spec.ts` or `pnpm specs --project=effect -g "tab stop"`.
 - `pnpm coverage` reads the last `pnpm specs` run and fails when it covered less than it should, or when arguments narrowed it. It prints passed, skipped, failed and fixme per spec file and project.
 
-CI runs these five in that order, in `.github/workflows/ci.yml`.
+CI runs only here, with no hosted runner. `vp run ci` runs every step in order: a frozen-lockfile install, `pnpm upstream`, then the four above. It must pass at the head before every push or merge.
 
 ## The spec run
 

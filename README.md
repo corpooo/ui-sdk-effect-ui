@@ -71,6 +71,8 @@ pnpm specs      # upstream's specs against our fixtures, and our own specs
 pnpm coverage   # what that run covered
 ```
 
+There is no hosted CI. `vp run ci` runs every step above in order, and must pass before a push or merge.
+
 `AGENTS.md` says how the spec run works and how to add a component.
 
 ## License
