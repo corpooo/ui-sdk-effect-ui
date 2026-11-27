@@ -16,7 +16,9 @@ const report = (tests: Record<string, string[]>): Report => ({
 });
 
 const covered = {
+  projects: ["effect"],
   expected: { effect: ["toggle.spec.ts"] },
+  args: "",
   available: ["tabs", "toggle"],
   shipped: ["toggle"],
   baseline: 1,
@@ -56,6 +58,20 @@ test("an exempt spec file may run no test, and must not run any", () => {
   expect(
     problems({ ...covered, exempt, counts: tally(report({ "toggle.spec.ts": ["expected"] })) }),
   ).toEqual(["toggle.spec.ts is exempt, and ran tests in effect. Remove its exemption."]);
+});
+
+test("a run that names no spec files for a project is a problem", () => {
+  const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
+  expect(problems({ ...covered, counts, expected: {} })).toEqual([
+    "The run names no spec file that opens a fixture we ship for effect.",
+  ]);
+});
+
+test("a run narrowed by Playwright arguments is a problem", () => {
+  const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
+  expect(problems({ ...covered, counts, args: "-g pressed" })).toEqual([
+    'The run was narrowed with "-g pressed". Run `pnpm specs` with no arguments.',
+  ]);
 });
 
 test("fewer fixtures than the baseline is a problem", () => {

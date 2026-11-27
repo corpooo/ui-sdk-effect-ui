@@ -36,7 +36,7 @@ export default {
   ...base,
   testDir: upstreamSpecs,
   outputDir: results,
-  metadata: { expected },
+  metadata: { expected, args: process.env.SPECS_ARGS ?? "" },
   reporter: [[process.env.CI ? "dot" : "list"], ["json", { outputFile: report }]],
   // Specs that would only skip stay out of a project, as upstream's do.
   projects: frameworks.map((framework) => ({

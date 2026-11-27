@@ -52,7 +52,16 @@ for (const [file, why] of Object.entries(exempt)) {
   console.log(`\nExempt: ${file}. ${why}`);
 }
 
-const found = problems({ counts, expected, available, shipped: ours, baseline, exempt });
+const found = problems({
+  counts,
+  projects: frameworks,
+  expected,
+  args: report.config.metadata?.args ?? "",
+  available,
+  shipped: ours,
+  baseline,
+  exempt,
+});
 if (found.length) {
   console.error(`\nNot covered:\n${found.map((problem) => `  ${problem}`).join("\n")}`);
   process.exit(1);

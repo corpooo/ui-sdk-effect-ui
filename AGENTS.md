@@ -11,7 +11,7 @@ Run `pnpm upstream` after a clone and whenever the submodule moves. It installs 
 - `vp check` formats, lints and type-checks.
 - `vp test` runs the unit tests in `packages/*/tests` and `scripts`.
 - `pnpm specs` runs upstream's specs against our fixtures. Arguments go to Playwright, such as `pnpm specs toggle.spec.ts` or `pnpm specs --project effect -g "tab stop"`.
-- `pnpm coverage` reads the last full `pnpm specs` run and fails when it covered less than it should. It prints passed, skipped and failed per spec file.
+- `pnpm coverage` reads the last `pnpm specs` run and fails when it covered less than it should, or when arguments narrowed it. It prints passed, skipped and failed per spec file.
 
 CI runs these five in that order, in `.github/workflows/ci.yml`.
 
@@ -36,6 +36,12 @@ A spec skips itself where its fixture is missing, so a green run proves nothing 
 - A part draws itself with `drawn(builder, shown(handle, slot, props), onChange)`. The view renders every attribute core's `attrs` gives, so server HTML and hydration match. Core writes to an element only after its mount binds it.
 - A message from core arrives as a `ui-sdk-message` event on the part's element. Keep it that way: a mount's result arrives a task later, and specs that read the page straight after a click then fail.
 - Name props, messages and events as Effect UI's guide says, in `node_modules/@effect/ui/ai-docs`. A seed prop is `initial<Key>`, where React has `default<Key>`.
+
+Known limits:
+
+- A refused change makes core's development build warn a second later that the value stayed. Core expects a refusal as `details.cancel()` inside the callback, which a message can't call.
+- Core's state follows the Model one render later, so two presses dispatched in one task both read the old state. Presses from a person arrive in separate tasks.
+- An instance's id comes from its component's path. Two roots mounted from one component need distinct `key`s in their mount options, or they share one core instance.
 
 ## Moving the pins
 

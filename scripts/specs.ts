@@ -22,23 +22,32 @@ if (args.includes("--restore")) {
   process.exit(restored() ? 0 : 1);
 }
 
-apply();
-console.log(`Overlaid ${planned().length} fixture files.`);
-// An earlier run's report would pass the coverage gate for a run that never started.
+// First, so an earlier run's report can't pass the coverage gate for a run that never started.
 rmSync(report, { force: true });
 mkdirSync(results, { recursive: true });
+apply();
+console.log(`Overlaid ${planned().length} fixture files.`);
 
 // The binary runs directly: `pnpm exec` there would first switch to upstream's pnpm.
 const playwright = spawn(
   `${upstreamBin}playwright`,
   ["test", "--config", playwrightConfig, ...args],
-  { cwd: upstreamTests, stdio: "inherit" },
+  // The coverage gate takes only a run of everything, so the report says what narrowed this one.
+  { cwd: upstreamTests, stdio: "inherit", env: { ...process.env, SPECS_ARGS: args.join(" ") } },
 );
 // Ctrl+C reaches Playwright too, which stops its server and exits, so the restore below still runs.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => playwright.kill(signal));
 }
-playwright.on("close", (code) => {
+// `close` has no code when a signal ended Playwright, and `error` comes
+// when it never started, like before `pnpm upstream`. Neither is a pass.
+function finish(code: number | null) {
   const clean = restored();
-  process.exit(code || (clean ? 0 : 1));
+  const status = code ?? 1;
+  process.exit(status !== 0 ? status : clean ? 0 : 1);
+}
+playwright.on("error", (error) => {
+  console.error(`Playwright didn't start: ${error.message}. Run \`pnpm upstream\` first.`);
+  finish(1);
 });
+playwright.on("close", finish);

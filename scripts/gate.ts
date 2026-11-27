@@ -3,7 +3,7 @@
 
 /** The part of Playwright's JSON report the gate reads. */
 export type Report = {
-  config: { metadata?: { expected?: Record<string, string[]> } };
+  config: { metadata?: { expected?: Record<string, string[]>; args?: string } };
   suites: Suite[];
 };
 type Suite = { file: string; specs?: Spec[]; suites?: Suite[] };
@@ -44,7 +44,11 @@ export function tally(report: Report) {
  */
 export function problems(input: {
   counts: Map<string, Map<string, Counts>>;
+  /** The projects the run should have had. */
+  projects: string[];
   expected: Record<string, string[]>;
+  /** The Playwright arguments that narrowed the run, empty for a run of everything. */
+  args: string;
   /** Upstream's React fixtures, which name every fixture there is to have. */
   available: string[];
   shipped: string[];
@@ -54,7 +58,15 @@ export function problems(input: {
   exempt: Record<string, string>;
 }) {
   const found: string[] = [];
-  for (const [project, files] of Object.entries(input.expected)) {
+  if (input.args) {
+    found.push(`The run was narrowed with "${input.args}". Run \`pnpm specs\` with no arguments.`);
+  }
+  for (const project of input.projects) {
+    const files = input.expected[project] ?? [];
+    // No list is a report the run never finished writing, or a project with no fixture.
+    if (files.length === 0) {
+      found.push(`The run names no spec file that opens a fixture we ship for ${project}.`);
+    }
     for (const file of files) {
       const count = input.counts.get(project)?.get(file);
       const ran = !!count && count.passed + count.failed > 0;
