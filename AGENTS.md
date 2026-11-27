@@ -32,15 +32,20 @@ A spec skips itself where its fixture is missing, so a green run proves nothing 
 
 `packages/ui-sdk-effect-ui/src/renderer/primitive.ts` is the shared renderer, and its opening comment explains the design. A component that follows `src/toggle.ts` gets these rules from it:
 
-- Core runs every value as controlled. The value is the prop when the parent passes one, and the Model's otherwise. Core asks for a change through `on<Key>Change`, `emit` turns that into the component's message, and `update` passes it on as a `Requested…` event. A parent refuses by keeping the prop.
+- A value the parent passes runs controlled in core. Core asks for a change through `on<Key>Change`, `emit` turns that into the component's message, and `update` passes it on as a `Requested…` event. A parent refuses by keeping the prop.
+- A value the parent leaves out runs uncontrolled in core, seeded with the Model's value as `default<Key>`. Core takes each change at once, and the same `Requested…` message keeps the Model in step, which the server, hydration and a history restore start from. Pass core `<key>` or `default<Key>`, never both.
 - A part draws itself with `drawn(builder, shown(handle, slot, props), onChange)`. The view renders every attribute core's `attrs` gives, so server HTML and hydration match. Core writes to an element only after its mount binds it.
+- A part core can leave out of the page, like a tab's panel, is wrapped in `whilePresent`. It gives the consumer nothing while it's absent, so the consumer chains on it with `?.`. An absent part has no mount, so keep a part in the page whose state changes whenever an absent one should come back, as the selected value is in the state of a tabs' root.
+- A part whose element can take an id from the consumer takes it as an argument, `tabs.tab(h.button, { value, id })`, and passes it to `shown`. A part can't read the id the consumer set on the builder. The parts drawn after it point at that id from the first render, on a server too.
+- Every part of one core instance comes from one component's `parts`, drawn in the consumer's `view` closure. A component whose parts belong to several core instances that read each other, like a submenu inside a menu, shares the outer handle's id through Effect UI's `shares` and `reads`, and passes the outer handle as `around`. No component needs it yet.
 - A message from core arrives as a `ui-sdk-message` event on the part's element. Keep it that way: a mount's result arrives a task later, and specs that read the page straight after a click then fail.
 - Name props, messages and events as Effect UI's guide says, in `node_modules/@effect/ui/ai-docs`. A seed prop is `initial<Key>`, where React has `default<Key>`.
 
 Known limits:
 
 - A refused change makes core's development build warn a second later that the value stayed. Core expects a refusal as `details.cancel()` inside the callback, which a message can't call.
-- Core's state follows the Model one render later, so two presses dispatched in one task both read the old state. Presses from a person arrive in separate tasks.
+- For a value the parent holds, core's state follows the prop one render later. Of two requests dispatched in one task, core judges the second against the old value, so one that returns to that value is dropped. Presses from a person arrive in separate tasks, and a value the component keeps has no such limit.
+- The specs check a component only through upstream's fixtures. What those don't draw, like an id from the consumer or events dispatched in one task, has no browser test. A change to it needs a check in a page, with a fixture and a Playwright script of your own that stay out of the repository.
 - An instance's id comes from its component's path. Two roots mounted from one component need distinct `key`s in their mount options, or they share one core instance.
 
 ## Moving the pins

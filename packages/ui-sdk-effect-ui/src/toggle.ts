@@ -61,10 +61,10 @@ export const Toggle = Html.component({
       ChangedPart: () => $.evolve({ revision: (count) => count + 1 }),
     }),
   parts: (p, model) => {
-    const { pressed: _, initialPressed: __, ...settings } = p.props;
+    const { pressed, initialPressed: _, ...settings } = p.props;
     const instance = handle(p.id("toggle"), toggle, {
       ...defined(settings),
-      pressed: p.props.pressed ?? model.pressed,
+      ...(pressed === undefined ? { defaultPressed: model.pressed } : { pressed }),
       onPressedChange: (pressed, details) =>
         emit(instance, ToggleMessage.RequestedPressed({ pressed, reason: details.reason })),
     });
@@ -147,10 +147,10 @@ export const ToggleGroup = Html.component({
       ChangedPart: () => $.evolve({ revision: (count) => count + 1 }),
     }),
   parts: (p, model) => {
-    const { value: _, initialValue: __, ...settings } = p.props;
+    const { value, initialValue: _, ...settings } = p.props;
     const instance = handle(p.id("group"), toggleGroup, {
       ...defined(settings),
-      value: [...(p.props.value ?? model.value)],
+      ...(value === undefined ? { defaultValue: [...model.value] } : { value: [...value] }),
       onValueChange: (value, details) =>
         emit(instance, ToggleGroupMessage.RequestedValue({ value, reason: details.reason })),
     });
