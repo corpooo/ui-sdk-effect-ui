@@ -37,8 +37,10 @@ export const TabsProps = Schema.Struct({
 
 export const TabsModel = Schema.Struct({
   /**
-   * The value, while the props leave `value` out. Null until a tab is asked
-   * for, while core shows the first enabled tab selected.
+   * The value, while the props leave `value` out: `initialValue`, then the
+   * tab last asked for. While it's null, tabs made from it show the first
+   * enabled tab selected, so tabs asked for no tab start there again once
+   * their parts have left the page and come back.
    */
   value: Value,
   /** Counts core's own changes, each of which renders again. */
@@ -91,9 +93,14 @@ export type TabsPanel = typeof TabsPanel.Type;
  * `tabs.root` to the element around everything, `tabs.list` to the one around
  * the tabs, `tabs.tab` to each tab's, and `tabs.panel` to each panel's.
  *
- * Draw the tabs before the panels. Until the tabs are in the page, like on a
- * server, tabs without a value show the first enabled tab selected, which is
- * the first one drawn.
+ * Draw the tabs before the panels, and in the order they appear. Until the
+ * tabs are in the page, like on a server, tabs without a value show the
+ * first enabled tab selected, which is the first one drawn or asked about
+ * with `tabs.tabState`.
+ *
+ * Give each panel's element a `key`. Panels come and go beside each other,
+ * and Effect UI pairs elements without a key by position, so one panel
+ * would take over another's element.
  */
 export const Tabs = Html.component({
   name: "Tabs",
@@ -127,7 +134,7 @@ export const Tabs = Html.component({
       drawn(builder, panel, changed),
     );
     return {
-      /** The selected tab's value as this render shows it, null while the first enabled tab stands in. */
+      /** The selected tab's value as this render shows it. Null for tabs without a value until they're in the page, while the first enabled tab stands in. */
       value: root.state.value,
       orientation: root.state.orientation,
       /** Which way the last selection moved, on screen. */
@@ -150,8 +157,8 @@ export const Tabs = Html.component({
       /**
        * The content of the tab with the same value. It gives nothing while
        * its tab isn't selected, so chain on it with `?.`:
-       * `tabs.panel(h.div, { value })?.children(...)`. Pass `keepMounted` to
-       * get a hidden element instead.
+       * `tabs.panel(h.div.key(value), { value })?.children(...)`. Pass
+       * `keepMounted` to get a hidden element instead.
        */
       panel: whilePresent(panel, ({ id, ...props }: TabsPanel) =>
         shown(instance, "panel", defined(props), id),

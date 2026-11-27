@@ -178,27 +178,26 @@ describe("Tabs", () => {
     }),
   );
 
-  // What core can ask for: any tab that isn't disabled, or none.
-  const messages = [
-    request("account"),
-    request("password"),
-    request(null),
-    TabsMessage.ChangedPart(),
-  ];
+  // What core asks for from a press or a key: a tab that isn't disabled.
+  const presses = [request("account"), request("password"), TabsMessage.ChangedPart()];
+  // A controller can also ask for no tab. Tabs that keep their value then
+  // show none in a page, and the first enabled one where they're made again
+  // from the Model, which is all a story reads, so only a parent is asked.
+  const messages = [...presses, request(null)];
 
   it("in every order of requests, tabs that keep their value show exactly one tab selected, never a disabled one", () => {
     Story.explore(
       TabsStory,
       {},
       {
-        messages,
+        messages: presses,
         invariant: (story) => {
           const tabs = selected(Story.parts(Tabs, story));
           return (
             tabs.length === 1 &&
             // The tab asked for last, or the first enabled one when none was.
             tabs[0] === (story.model.value ?? "account") &&
-            // Every request went on to the parent.
+            // What went on to the parent is what the tabs took.
             story.emitted.every((event) => event.value === story.model.value)
           );
         },

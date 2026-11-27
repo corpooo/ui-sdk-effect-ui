@@ -116,12 +116,23 @@ export function instanceOf<P extends Primitive>(handle: Handle<P>): ReturnType<P
   return instance as ReturnType<P>;
 }
 
+// The state a render's options make of the state the instance had then.
+const previews = new WeakMap<Handle, { readonly base: object; readonly state: object }>();
+
 // Reads what a render shows: the state its options make of the instance's,
 // before a mount hands them over, with the instance around it showing its own.
 function showing<T>(handle: Handle, read: (state: object) => T): T {
   const own = () => {
     const instance = instanceOf(handle);
-    const state = instance.preview(optionsOf(handle)) ?? instance.get();
+    const base = instance.get();
+    // Made once per render and state: every part of the render asks, and
+    // options can measure the page to make theirs.
+    let preview = previews.get(handle);
+    if (preview?.base !== base) {
+      preview = { base, state: instance.preview(optionsOf(handle)) ?? base };
+      previews.set(handle, preview);
+    }
+    const { state } = preview;
     return instance.view(state, () => read(state));
   };
   return handle.around ? showing(handle.around, own) : own();
@@ -175,8 +186,13 @@ export function shown<P extends Primitive, S extends SlotName<P>>(
   return showing(handle, (state) => {
     // A render may never commit, so the part keeps its props until a mount commits these.
     const part = instanceOf(handle).part(slot, props, true);
-    takeOwnId(part, id);
-    return { handle, slot, props, id, ...snapshot(part, id, props, state) } as Shown<P, S>;
+    const shows = snapshot(part, id, props, state);
+    // Only a part that is drawn: core keeps each part it names, and a part
+    // left out is made again by every render.
+    if (shows.present) {
+      takeOwnId(part, id);
+    }
+    return { handle, slot, props, id, ...shows } as Shown<P, S>;
   });
 }
 
@@ -407,7 +423,9 @@ export const drawn = <Msg, P extends Primitive, S extends SlotName<P>>(
  * A part that is drawn only while core says it's present, like a tab's panel
  * while its tab is selected. `show` makes what `part` draws from the
  * consumer's arguments. Left out, it gives the consumer nothing to chain on:
- * `tabs.panel(h.div, { value })?.children(...)`.
+ * `tabs.panel(h.div.key(value), { value })?.children(...)`. The consumer
+ * keys such an element, since Effect UI pairs elements without a key by
+ * position, and one that comes and goes shifts the ones after it.
  */
 export const whilePresent = <
   Tag extends string,

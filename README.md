@@ -34,7 +34,7 @@ Toggle(h, {
 
 Pass `pressed` in the props to hold the value yourself. A press then only asks, with `RequestedPressed`. Pass the new value back to accept it, or keep the old one to refuse.
 
-A part that core leaves out of the page gives nothing to chain on. A tab's panel is one while its tab isn't selected, so chain on it with `?.`.
+A part that core leaves out of the page gives nothing to chain on. A tab's panel is one while its tab isn't selected, so chain on it with `?.`, and give its element a `key`.
 
 ```ts
 import { Tabs } from "@corpooo/ui-sdk-effect-ui/tabs";
@@ -52,8 +52,8 @@ Tabs(h, {
             tabs.tab(h.button, { value: "account" }).children("Account"),
             tabs.tab(h.button, { value: "billing" }).children("Billing"),
           ),
-        tabs.panel(h.div, { value: "account" })?.children("Your account."),
-        tabs.panel(h.div, { value: "billing" })?.children("Your invoices."),
+        tabs.panel(h.div.key("account"), { value: "account" })?.children("Your account."),
+        tabs.panel(h.div.key("billing"), { value: "billing" })?.children("Your invoices."),
       ),
 });
 ```

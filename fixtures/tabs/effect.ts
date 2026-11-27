@@ -39,7 +39,8 @@ function fixture() {
     model: FixtureModel,
     message: FixtureMessage,
   }).make({
-    init: () => ({ action: "", value: defaultValue ?? null }),
+    // With no default, React's tabs select the first enabled tab themselves.
+    init: () => ({ action: "", value: defaultValue ?? tabsFixture.defaultValue }),
     update: ($, message) =>
       FixtureMessage.match(message, {
         RequestedValueTabs: ({ value }) =>
