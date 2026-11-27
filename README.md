@@ -13,8 +13,9 @@ Early, and not published. Both dependencies are pinned to single commits: UI SDK
 | Toggle, ToggleGroup | `@corpooo/ui-sdk-effect-ui/toggle`    | pass, client-rendered and hydrated |
 | Button              | `@corpooo/ui-sdk-effect-ui/button`    | pass, client-rendered and hydrated |
 | Separator           | `@corpooo/ui-sdk-effect-ui/separator` | pass, client-rendered and hydrated |
+| Tabs                | `@corpooo/ui-sdk-effect-ui/tabs`      | pass, client-rendered and hydrated |
 
-That is 2 of upstream's 146 fixtures, `toggle` and `toggle-render`.
+That is 5 of upstream's 146 fixtures: `toggle`, `toggle-render`, `tabs`, `tabs-render` and `tabs-perf`.
 
 ## Use
 
@@ -32,6 +33,30 @@ Toggle(h, {
 ```
 
 Pass `pressed` in the props to hold the value yourself. A press then only asks, with `RequestedPressed`. Pass the new value back to accept it, or keep the old one to refuse.
+
+A part that core leaves out of the page gives nothing to chain on. A tab's panel is one while its tab isn't selected, so chain on it with `?.`.
+
+```ts
+import { Tabs } from "@corpooo/ui-sdk-effect-ui/tabs";
+
+Tabs(h, {
+  props: { initialValue: "account" },
+  onEmit: { RequestedValue: () => undefined },
+  view: (tabs) =>
+    tabs
+      .root(h.div)
+      .children(
+        tabs
+          .list(h.div.attr("aria-label", "Settings"))
+          .children(
+            tabs.tab(h.button, { value: "account" }).children("Account"),
+            tabs.tab(h.button, { value: "billing" }).children("Billing"),
+          ),
+        tabs.panel(h.div, { value: "account" })?.children("Your account."),
+        tabs.panel(h.div, { value: "billing" })?.children("Your invoices."),
+      ),
+});
+```
 
 ## Develop
 
