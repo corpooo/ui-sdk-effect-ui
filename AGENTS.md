@@ -19,9 +19,9 @@ CI runs only here, with no hosted runner. `vp run ci` runs every step in order: 
 
 `pnpm specs` symlinks each `fixtures/<name>/effect.ts` and `effect-ssr.ts` to where upstream's playground looks for `<name>/<framework>.ts`, and each `fixtures/own/<name>/` entry to `own-<name>/`. It builds and serves the playground, runs Playwright with the projects from `scripts/playwright.config.ts`, and removes the links. The `effect` and `effect-ssr` projects run upstream's specs. The `own` and `own-ssr` projects run ours, with the same `effect` and `effect-ssr` fixture files. The runner serves the playground itself and stops it on every way out, a kill or a hangup included. It serves on port 5300, or `PLAYGROUND_PORT`. Only a `kill -9` leaves links and a server behind: the next run removes the links, as does `pnpm specs --restore`, and the server has to be stopped by hand.
 
-A spec skips itself where its fixture is missing, so a green run proves nothing by itself. The coverage gate fails when a spec file that opens a fixture we ship ran no test, or when we ship fewer fixtures for a framework, `effect` or `effect-ssr`, than `coverage-baseline.json` says. A spec file that skips every test for us by its own rule goes in that file's `exempt`, with why.
+A spec skips itself where its fixture is missing, so a green run proves nothing by itself. The coverage gate fails when a spec file that opens a fixture we ship ran no test, when a fixture we ship is opened by no spec file, when a test skipped for want of a fixture we ship, or when a fixture `coverage-baseline.json` names for a framework, `effect` or `effect-ssr`, is gone. A spec file that skips every test for us by its own rule goes in that file's `exempt`, with why.
 
-Our own specs and fixtures are counted apart, and never stand in for one of upstream's. The gate fails when a spec file of our own ran no test in a project that runs it, unless all its tests are `test.fixme`s.
+Our own specs and fixtures are counted apart, and never stand in for one of upstream's. The gate fails when a spec file of our own ran no test in a project that runs it, unless all its tests are `test.fixme`s, and when a test opens an `own-` fixture we don't have.
 
 ## Adding a spec of our own
 
@@ -38,7 +38,7 @@ Write one where upstream's fixtures don't draw a case, like an id from the consu
 1. Write `fixtures/<name>/effect.ts` after upstream's `apps/playground/src/fixtures/<name>/react.tsx`. It renders the same page, since labels, values and order are what the specs find. Name the upstream file in a comment at the top, as `NOTICE` promises. Add `effect-ssr.ts` where React has `react-ssr.tsx`.
 2. Run `pnpm specs` and see the component's specs fail.
 3. Write the component in `packages/ui-sdk-effect-ui/src/<name>.ts`, add its entry to the package's `exports`, and add the core entry it imports to `paths` in `tsconfig.json`.
-4. Run `pnpm specs` until every spec file for the fixture passes, then raise each framework's count in `fixtures` in `coverage-baseline.json`.
+4. Run `pnpm specs` until every spec file for the fixture passes, then add its name to each framework's list in `fixtures` in `coverage-baseline.json`.
 
 ## How a component renders
 

@@ -1,15 +1,16 @@
 // The coverage gate. A spec skips itself where a fixture is missing, so a
 // run can be green while it checks nothing. After `pnpm specs`, this says
 // which of upstream's fixtures we have and what ran for them, and fails when
-// a spec file for a fixture we ship ran no test, or we ship fewer fixtures
-// for a framework than coverage-baseline.json says. A spec file that skips
-// every test for us by its own rule is listed there as exempt, with why. Our
-// own specs and fixtures are counted apart, and each own spec file must run
-// a test, unless it holds only `test.fixme`s.
+// a spec file for a fixture we ship ran no test, a fixture we ship is opened
+// by no spec, a test skipped for want of a fixture we have, or a fixture
+// coverage-baseline.json names is gone. A spec file that skips every test
+// for us by its own rule is listed there as exempt, with why. Our own specs
+// and fixtures are counted apart, and each own spec file must run a test,
+// unless it holds only `test.fixme`s.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { problems, ran, tally, type Counts, type Report } from "./gate.ts";
-import { owned, shipped } from "./overlay.ts";
+import { missing, problems, ran, tally, type Counts, type Report } from "./gate.ts";
+import { opened, owned, ownShipped, shipped } from "./overlay.ts";
 import {
   baseline as baselineFile,
   frameworks,
@@ -24,7 +25,7 @@ if (!existsSync(reportFile)) {
 }
 const report = JSON.parse(readFileSync(reportFile, "utf8")) as Report;
 const { fixtures: baseline, exempt } = JSON.parse(readFileSync(baselineFile, "utf8")) as {
-  fixtures: Record<string, number>;
+  fixtures: Record<string, string[]>;
   exempt: Record<string, string>;
 };
 
@@ -38,10 +39,9 @@ for (const framework of frameworks) {
   console.log(
     `${framework} fixtures: ${names.length} of upstream's ${available.length} (${names.join(", ")}).`,
   );
-  if (names.length > (baseline[framework] ?? 0)) {
-    console.log(
-      `That's more than the baseline of ${baseline[framework] ?? 0}: raise it in coverage-baseline.json.`,
-    );
+  const unnamed = names.filter((name) => !baseline[framework]?.includes(name));
+  if (unnamed.length) {
+    console.log(`Add ${unnamed.join(", ")} to ${framework} in coverage-baseline.json.`);
   }
 }
 const own = owned();
@@ -84,8 +84,11 @@ const found = problems({
   ownProjects: Object.keys(ownProjects),
   own: ownFiles,
   args,
-  available,
+  frameworkOf: ownProjects,
   shipped: ours,
+  ownShipped: ownShipped(),
+  opened: opened(),
+  missing: missing(report),
   baseline,
   exempt,
 });

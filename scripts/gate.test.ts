@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { problems, tally, type Report } from "./gate.ts";
+import { missing, problems, tally, type Report } from "./gate.ts";
 
 // A test as the report gives it: by its status, or as "fixme" for a `test.fixme`.
 const entry = (projectName: string, status: string) =>
@@ -26,9 +26,12 @@ const covered = {
   ownProjects: [],
   own: {},
   args: "",
-  available: ["tabs", "toggle"],
+  frameworkOf: { own: "effect" },
   shipped: { effect: ["toggle"], "effect-ssr": ["toggle"] },
-  baseline: { effect: 1, "effect-ssr": 1 },
+  ownShipped: { effect: ["own-tabs-keys"], "effect-ssr": [] },
+  opened: ["toggle", "own-tabs-keys"],
+  missing: [],
+  baseline: { effect: ["toggle"], "effect-ssr": ["toggle"] },
   exempt: {},
 };
 
@@ -126,23 +129,56 @@ test("a run narrowed by Playwright arguments is a problem", () => {
   ]);
 });
 
-test("fewer fixtures than the baseline is a problem", () => {
-  const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
-  expect(problems({ ...covered, counts, baseline: { effect: 2, "effect-ssr": 1 } })).toEqual([
-    "We ship 1 effect fixtures, fewer than the baseline of 2.",
-  ]);
-});
-
-test("a hydration fixture that goes missing is a problem", () => {
+test("a fixture the baseline names that we no longer ship is a problem", () => {
   const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
   expect(
     problems({ ...covered, counts, shipped: { effect: ["toggle"], "effect-ssr": [] } }),
-  ).toEqual(["We ship 0 effect-ssr fixtures, fewer than the baseline of 1."]);
+  ).toEqual(["coverage-baseline.json names toggle for effect-ssr, and we don't ship it."]);
 });
 
-test("a fixture upstream has no React fixture for is a problem", () => {
+test("a fixture no spec file opens is a problem", () => {
   const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
   expect(
-    problems({ ...covered, counts, shipped: { effect: ["toggle", "togle"] }, baseline: {} }),
-  ).toEqual(["fixtures/togle has no React fixture of that name upstream, so no spec opens it."]);
+    problems({
+      ...covered,
+      counts,
+      shipped: { effect: ["toggle", "toggle-kitchen-sink"], "effect-ssr": ["toggle"] },
+    }),
+  ).toEqual(["fixtures/toggle-kitchen-sink is opened by no spec file, so nothing tests it."]);
+});
+
+test("a test that skips for want of a fixture is a problem when we have it, or it is ours and gone", () => {
+  const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
+  const skipped = (project: string, fixture: string) => ({
+    ...covered,
+    counts,
+    missing: [{ project, file: "a.spec.ts", fixture }],
+  });
+  expect(problems(skipped("effect", "toggle"))).toEqual([
+    "a.spec.ts skipped a test in effect for want of toggle, which we ship.",
+  ]);
+  expect(problems(skipped("own", "own-tabs-keyz"))).toEqual([
+    "a.spec.ts opens own-tabs-keyz, and we have no fixture of that name.",
+  ]);
+  // Upstream's fixtures we don't ship, and our own a framework doesn't have, skip as they should.
+  expect(problems(skipped("effect", "menu"))).toEqual([]);
+  expect(problems(skipped("effect-ssr", "own-tabs-keys"))).toEqual([]);
+});
+
+test("a skip for a missing fixture is read from the report", () => {
+  const skip = (description: string) => ({
+    projectName: "own",
+    status: "skipped",
+    annotations: [{ type: "skip", description }],
+  });
+  const found = missing({
+    config: {},
+    suites: [
+      {
+        file: "../../../../specs/f.spec.ts",
+        specs: [{ tests: [skip("No own-tabs-keyz fixture for effect."), skip("Only web.")] }],
+      },
+    ],
+  });
+  expect(found).toEqual([{ project: "own", file: "f.spec.ts", fixture: "own-tabs-keyz" }]);
 });

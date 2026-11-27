@@ -18,7 +18,7 @@ type Spec = {
   tests: {
     projectName: string;
     status: string;
-    annotations?: { type: string }[];
+    annotations?: { type: string; description?: string }[];
   }[];
 };
 
@@ -69,6 +69,22 @@ export function tally(report: Report) {
   return counts;
 }
 
+/** Each test that skipped itself because a fixture it opens is missing, as upstream's `open` says. */
+export function missing(report: Report) {
+  const found: { project: string; file: string; fixture: string }[] = [];
+  for (const suite of report.suites) {
+    for (const test of specsOf(suite).flatMap((spec) => spec.tests)) {
+      for (const { description = "" } of test.annotations ?? []) {
+        const fixture = /^No ([\w-]+) fixture for /.exec(description)?.[1];
+        if (fixture) {
+          found.push({ project: test.projectName, file: basename(suite.file), fixture });
+        }
+      }
+    }
+  }
+  return found;
+}
+
 /**
  * Why the run doesn't cover what we ship, or nothing when it does.
  *
@@ -88,12 +104,17 @@ export function problems(input: {
   own: Record<string, string[]>;
   /** The Playwright arguments that narrowed the run, empty for a run of everything. */
   args: string;
-  /** Upstream's React fixtures, which name every fixture there is to have. */
-  available: string[];
-  /** The fixtures we ship, by framework. */
+  /** The framework each project runs. */
+  frameworkOf: Record<string, string>;
+  /** The fixtures we ship, and our own, by framework. */
   shipped: Record<string, string[]>;
-  /** The number of fixtures each framework had when it was last raised. */
-  baseline: Record<string, number>;
+  ownShipped: Record<string, string[]>;
+  /** Every fixture some spec file opens by name. */
+  opened: string[];
+  /** The tests that skipped for a missing fixture. */
+  missing: { project: string; file: string; fixture: string }[];
+  /** The fixtures each framework must keep shipping. */
+  baseline: Record<string, string[]>;
   /** Spec files that skip every test for us by their own rule, each with why. */
   exempt: Record<string, string>;
 }) {
@@ -130,17 +151,27 @@ export function problems(input: {
     }
   }
   for (const name of new Set(Object.values(input.shipped).flat())) {
-    if (!input.available.includes(name)) {
-      found.push(
-        `fixtures/${name} has no React fixture of that name upstream, so no spec opens it.`,
-      );
+    if (!input.opened.includes(name)) {
+      found.push(`fixtures/${name} is opened by no spec file, so nothing tests it.`);
     }
   }
-  for (const [framework, baseline] of Object.entries(input.baseline)) {
-    const count = input.shipped[framework]?.length ?? 0;
-    if (count < baseline) {
-      found.push(`We ship ${count} ${framework} fixtures, fewer than the baseline of ${baseline}.`);
+  // A missing fixture of ours is a run that lost its links, or a spec that names one we don't have.
+  const allOwn = new Set(Object.values(input.ownShipped).flat());
+  for (const { project, file, fixture } of input.missing) {
+    const framework = input.frameworkOf[project] ?? project;
+    const ours = [...(input.shipped[framework] ?? []), ...(input.ownShipped[framework] ?? [])];
+    if (ours.includes(fixture)) {
+      found.push(`${file} skipped a test in ${project} for want of ${fixture}, which we ship.`);
+    } else if (fixture.startsWith("own-") && !allOwn.has(fixture)) {
+      found.push(`${file} opens ${fixture}, and we have no fixture of that name.`);
     }
   }
-  return found;
+  for (const [framework, names] of Object.entries(input.baseline)) {
+    for (const name of names) {
+      if (!input.shipped[framework]?.includes(name)) {
+        found.push(`coverage-baseline.json names ${name} for ${framework}, and we don't ship it.`);
+      }
+    }
+  }
+  return [...new Set(found)];
 }

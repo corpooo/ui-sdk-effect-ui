@@ -288,6 +288,17 @@ type Binding = {
   readonly after: After | undefined;
 };
 
+// Only the spec harness listens, in `fixtures/hydrate.ts`: Effect UI repairs a
+// hydration mismatch before any mount runs, and says nothing, so the harness
+// counts what changed until core first writes to a part's element.
+let bound = false;
+function bindingFirst(node: Element) {
+  if (!bound) {
+    bound = true;
+    node.dispatchEvent(new Event("ui-sdk-bind"));
+  }
+}
+
 function attach(node: Element, first: Handle) {
   const releases = chainOf(first).map(acquire);
   const entry = live.get(first.id)!;
@@ -329,6 +340,7 @@ function attach(node: Element, first: Handle) {
         if (next !== part) {
           leave();
           part = next;
+          bindingFirst(node);
           const cleanups = [
             // Typed for HTML, though core binds SVG too, like a tab's icon.
             bind(next, node as HTMLElement, host),

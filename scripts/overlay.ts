@@ -7,12 +7,21 @@ import {
   lstatSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   readlinkSync,
   rmSync,
   symlinkSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fixtures, frameworks, ownFixtures, upstream, upstreamFixtures } from "./paths.ts";
+import {
+  fixtures,
+  frameworks,
+  ownFixtures,
+  ownSpecs,
+  upstream,
+  upstreamFixtures,
+  upstreamSpecs,
+} from "./paths.ts";
 
 type Link = { link: string; target: string };
 
@@ -43,24 +52,42 @@ export function planned(): Link[] {
   return [...links(fixtures, (name) => name), ...links(ownFixtures, (name) => `own-${name}`)];
 }
 
-/** The names of upstream's fixtures we have an entry for, by framework. Our own fixtures aren't among them. */
-export function shipped() {
-  return Object.fromEntries(
+const entries = (root: string, served: (name: string) => string) =>
+  Object.fromEntries(
     frameworks.map((framework) => [
       framework,
-      directories(fixtures).filter((name) =>
-        ["ts", "tsx"].some((extension) =>
-          existsSync(join(fixtures, name, `${framework}.${extension}`)),
-        ),
-      ),
+      directories(root)
+        .filter((name) =>
+          ["ts", "tsx"].some((extension) =>
+            existsSync(join(root, name, `${framework}.${extension}`)),
+          ),
+        )
+        .map(served),
     ]),
   );
-}
+
+/** The names of upstream's fixtures we have an entry for, by framework. Our own fixtures aren't among them. */
+export const shipped = () => entries(fixtures, (name) => name);
+
+/** Our own fixtures, by framework, by the name a spec opens them with. */
+export const ownShipped = () => entries(ownFixtures, (name) => `own-${name}`);
 
 /** Our own fixtures, by the name a spec opens them with. */
 export function owned() {
   return directories(ownFixtures).map((name) => `own-${name}`);
 }
+
+/** The fixtures a spec file opens by name, as upstream's `specsThatSkip` reads them. */
+export const opens = (file: string) =>
+  [...readFileSync(file, "utf8").matchAll(/\bopen\(\s*"([\w-]+)"/g)].map(([, name]) => name!);
+
+/** Every fixture some spec file of upstream's or ours opens by name. */
+export const opened = () =>
+  [upstreamSpecs, ownSpecs].flatMap((directory) =>
+    readdirSync(directory)
+      .filter((file) => file.endsWith(".spec.ts"))
+      .flatMap((file) => opens(join(directory, file))),
+  );
 
 // A symlink into our fixtures is ours whoever made it: this run, one that was
 // interrupted, or one from before a fixture was renamed.

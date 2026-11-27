@@ -2,11 +2,11 @@
 // our own specs beside it. It lives here and reads the upstream config by
 // path, so no file is added to the upstream checkout for it. Playwright runs
 // it from `upstream/ui/tests`.
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { join } from "node:path";
+import { opens, ownShipped } from "./overlay.ts";
 import {
   frameworks,
-  ownFixtures,
   ownProjects,
   ownSpecs,
   report,
@@ -39,19 +39,14 @@ const expected = Object.fromEntries(
 // skips its tests, which the coverage gate fails. `own-ssr` runs the files
 // that open a fixture with an `effect-ssr.ts`, by name, as upstream's specs do.
 const ownFiles = readdirSync(ownSpecs).filter((file) => file.endsWith(".spec.ts"));
-const opened = (file: string) =>
-  [...readFileSync(join(ownSpecs, file), "utf8").matchAll(/\bopen\(\s*"own-([\w-]+)"/g)].map(
-    ([, name]) => name!,
-  );
-const hasOwnFixture = (name: string, framework: string) =>
-  ["ts", "tsx"].some((extension) =>
-    existsSync(join(ownFixtures, name, `${framework}.${extension}`)),
-  );
+const ours = ownShipped();
 const own = Object.fromEntries(
   Object.entries(ownProjects).map(([project, framework]) => [
     project,
     framework.endsWith("-ssr")
-      ? ownFiles.filter((file) => opened(file).some((name) => hasOwnFixture(name, framework)))
+      ? ownFiles.filter((file) =>
+          opens(join(ownSpecs, file)).some((name) => ours[framework]?.includes(name)),
+        )
       : ownFiles,
   ]),
 );

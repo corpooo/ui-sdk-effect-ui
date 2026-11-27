@@ -1,5 +1,8 @@
 {
-  "fixtures": { "effect": 5, "effect-ssr": 2 },
+  "fixtures": {
+    "effect": ["tabs", "tabs-perf", "tabs-render", "toggle", "toggle-render"],
+    "effect-ssr": ["tabs", "toggle"]
+  },
   "exempt": {
     "elements.spec.ts": "Custom elements only: it skips every framework but web."
   }
