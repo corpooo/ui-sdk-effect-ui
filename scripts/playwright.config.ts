@@ -21,10 +21,22 @@ const { specsThatSkip } = (await import(`${upstreamTests}fixture-files.ts`)) as 
 
 const port = process.env.PLAYGROUND_PORT ?? "5300";
 
+// For the coverage gate: the spec files that open a fixture we ship, by
+// project. Upstream's rule decides, asked twice: a framework with no fixtures
+// skips every spec file that opens one, and ours skips the ones it can't serve.
+const expected = Object.fromEntries(
+  frameworks.map((framework) => {
+    const skipped = new Set(specsThatSkip(framework));
+    const withNoFixtures = framework.replace("effect", "none");
+    return [framework, specsThatSkip(withNoFixtures).filter((file) => !skipped.has(file))];
+  }),
+);
+
 export default {
   ...base,
   testDir: upstreamSpecs,
   outputDir: results,
+  metadata: { expected },
   reporter: [[process.env.CI ? "dot" : "list"], ["json", { outputFile: report }]],
   // Specs that would only skip stay out of a project, as upstream's do.
   projects: frameworks.map((framework) => ({

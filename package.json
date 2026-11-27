@@ -6,6 +6,7 @@
   "scripts": {
     "upstream": "node scripts/upstream.ts",
     "specs": "node scripts/specs.ts",
+    "coverage": "node scripts/coverage.ts",
     "prepare": "vp config"
   },
   "devDependencies": {

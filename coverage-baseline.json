@@ -1,0 +1,6 @@
+{
+  "fixtures": 2,
+  "exempt": {
+    "elements.spec.ts": "Custom elements only: it skips every framework but web."
+  }
+}

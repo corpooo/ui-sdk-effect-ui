@@ -17,6 +17,8 @@ export const upstreamSpecs = at("../upstream/ui/tests/specs/");
 /** What a spec run leaves for the coverage gate. */
 export const results = at("../test-results/");
 export const report = at("../test-results/report.json");
+/** How many fixtures we had when it was last raised. The coverage gate fails below it. */
+export const baseline = at("../coverage-baseline.json");
 export const playwrightConfig = at("./playwright.config.ts");
 
 /** The Playwright projects the overlay adds, one per fixture file name. */
