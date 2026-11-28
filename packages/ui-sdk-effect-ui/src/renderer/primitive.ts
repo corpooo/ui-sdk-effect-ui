@@ -28,7 +28,7 @@
 // which that part's mount tells. So a component keeps at least one part in
 // the page whose state holds what the left-out ones depend on, as the
 // selected value is in the state of a tabs' root.
-import { Component, Mount, View } from "@effect/ui";
+import { Component, Mount, Subscription, View } from "@effect/ui";
 import type {
   Attrs,
   OptionsOf,
@@ -39,6 +39,7 @@ import type {
   SlotName,
   StateOf,
 } from "@ui-sdk/core";
+import type { Feature } from "@ui-sdk/core/renderer";
 import {
   attrs,
   bind,
@@ -50,7 +51,7 @@ import {
   takeOwnId,
   unwatched,
 } from "@ui-sdk/core/renderer";
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Equal, Schema, Stream } from "effect";
 
 /**
  * One render's description of an instance: the options this render gives it.
@@ -95,7 +96,10 @@ type Live = {
   readonly instance: PrimitiveInstance;
   options: object;
   uses: number;
-  readonly sinks: Set<(message: unknown) => void>;
+  /** Where each part's mount takes messages, by the element it is on. */
+  readonly sinks: Map<(message: unknown) => void, Element>;
+  /** Where messages go while no part is in the page: the subscription that holds the instance. */
+  held: ((message: unknown) => void) | undefined;
 };
 
 // Written only by mounts, so only in a browser: a server never holds one request's instance for the next.
@@ -104,12 +108,23 @@ const detached = new WeakMap<Handle, PrimitiveInstance>();
 
 const optionsOf = (handle: Handle) => ({ ...handle.options, id: handle.id });
 
+// Whether a detached instance is being made. The instances its options read
+// are then detached too: a submenu made for one render adds itself to the
+// menu it reads, and a live menu would keep every render's.
+let detaching = false;
+
 /** The instance a render reads: the live one, else one detached from the page. */
 export function instanceOf<P extends Primitive>(handle: Handle<P>): ReturnType<P> {
-  let instance = live.get(handle.id)?.instance ?? detached.get(handle);
+  let instance = (detaching ? undefined : live.get(handle.id)?.instance) ?? detached.get(handle);
   if (!instance) {
-    // Without its controller, which stays with the instance on the page.
-    instance = unwatched(() => handle.primitive({ ...optionsOf(handle), controller: undefined }));
+    const outer = detaching;
+    detaching = true;
+    try {
+      // Without its controller, which stays with the instance on the page.
+      instance = unwatched(() => handle.primitive({ ...optionsOf(handle), controller: undefined }));
+    } finally {
+      detaching = outer;
+    }
     detached.set(handle, instance);
   }
   return instance as ReturnType<P>;
@@ -120,7 +135,7 @@ const previews = new WeakMap<Handle, { readonly base: object; readonly state: ob
 
 // Reads what a render shows: the state its options make of the instance's,
 // before a mount hands them over, with the instance around it showing its own.
-function showing<T>(handle: Handle, read: (state: object) => T): T {
+function showing<T>(handle: Handle, read: (state: object) => T, around?: Around): T {
   const own = () => {
     const instance = instanceOf(handle);
     const base = instance.get();
@@ -132,10 +147,32 @@ function showing<T>(handle: Handle, read: (state: object) => T): T {
       previews.set(handle, preview);
     }
     const { state } = preview;
-    return instance.view(state, () => read(state));
+    return instance.view(state, () => read(state), around);
   };
   return handle.around ? showing(handle.around, own) : own();
 }
+
+/** What a render shows of an instance's state, like whether a menu is open. */
+export const reading = <P extends Primitive, T>(
+  handle: Handle<P>,
+  read: (state: ReturnType<ReturnType<P>["get"]>) => T,
+): T => showing(handle, read as (state: object) => T);
+
+/**
+ * The props this render gives the parts a part reads, by slot, like a radio
+ * item its group's. Core reads a part's props as its mount last committed
+ * them, which is a render behind for a part drawn in this one.
+ */
+export type Around = Record<string, object>;
+
+/** What a part's render adds to its slot and props. */
+export type Own = {
+  /** The id the consumer gives the element, in place of the one core makes. */
+  readonly id?: string | undefined;
+  /** The feature whose slot this is, for a slot an instance has only once a part asks for it. */
+  readonly feature?: Feature | undefined;
+  readonly around?: Around | undefined;
+};
 
 /**
  * One part of an instance as a render shows it: its attributes, and the state
@@ -148,6 +185,8 @@ export interface Shown<P extends Primitive = Primitive, S extends SlotName<P> = 
   readonly props: PropsOf<P, S>;
   /** The id the consumer gives the element, in place of the one core makes. */
   readonly id: string | undefined;
+  /** The feature the slot comes from, which the live instance takes before it makes the part. */
+  readonly feature: Feature | undefined;
   readonly present: boolean;
   readonly attrs: Attrs;
   readonly state: StateOf<P, S>;
@@ -180,19 +219,26 @@ export function shown<P extends Primitive, S extends SlotName<P>>(
   handle: Handle<P>,
   slot: S,
   props: PropsOf<P, S>,
-  id?: string,
+  { id, feature, around }: Own = {},
 ): Shown<P, S> {
-  return showing(handle, (state) => {
-    // A render may never commit, so the part keeps its props until a mount commits these.
-    const part = instanceOf(handle).part(slot, props, true);
-    const shows = snapshot(part, id, props, state);
-    // Only a part that is drawn: core keeps each part it names, and a part
-    // left out is made again by every render.
-    if (shows.present) {
-      takeOwnId(part, id);
-    }
-    return { handle, slot, props, id, ...shows } as Shown<P, S>;
-  });
+  if (feature) {
+    instanceOf(handle).use(feature);
+  }
+  return showing(
+    handle,
+    (state) => {
+      // A render may never commit, so the part keeps its props until a mount commits these.
+      const part = instanceOf(handle).part(slot, props, true);
+      const shows = snapshot(part, id, props, state);
+      // Only a part that is drawn: core keeps each part it names, and a part
+      // left out is made again by every render.
+      if (shows.present) {
+        takeOwnId(part, id);
+      }
+      return { handle, slot, props, id, feature, ...shows } as Shown<P, S>;
+    },
+    around,
+  );
 }
 
 /**
@@ -201,7 +247,14 @@ export function shown<P extends Primitive, S extends SlotName<P>>(
  * reaches it through the element one of its parts is bound to.
  */
 export function emit(handle: Handle, message: unknown) {
-  const [sink] = live.get(handle.id)?.sinks ?? [];
+  const entry = live.get(handle.id);
+  if (!entry) {
+    return;
+  }
+  // A part's element in the page, where Effect UI hears it: not one a kept
+  // child holds while it's hidden. Else the hold, else any part.
+  const sinks = [...entry.sinks];
+  const sink = sinks.find(([, node]) => node.isConnected)?.[0] ?? entry.held ?? sinks[0]?.[0];
   sink?.(message);
 }
 
@@ -210,7 +263,7 @@ function acquire(handle: Handle) {
   if (!entry) {
     const instance = handle.primitive(optionsOf(handle));
     // The render's own options, so its handover finds them taken.
-    entry = { instance, options: handle.options, uses: 0, sinks: new Set() };
+    entry = { instance, options: handle.options, uses: 0, sinks: new Map(), held: undefined };
     live.set(handle.id, entry);
   }
   entry.uses++;
@@ -225,6 +278,129 @@ function acquire(handle: Handle) {
       }
     });
   };
+}
+
+// What keeps a controller's instance: the subscription's hold, and the
+// instance it keeps, which the component's first render with the
+// controller names. A component's instance keeps its id for life, so a hold
+// keeps that one instance, and a render of any other component with the same
+// controller, like a server's or another menu's, leaves it alone.
+type Hold = {
+  readonly controller: object;
+  handle: Handle | undefined;
+  release: () => void;
+  readonly sink: (message: unknown) => void;
+};
+
+// All a controller has here: a number, as a subscription's dependencies take
+// only primitives, and the hold that has it now. Only in a browser, as `live` is.
+type Controlled = { readonly id: number; hold?: Hold | undefined };
+const controllers = new WeakMap<object, Controlled>();
+let numbered = 0;
+const controlled = (controller: object) => {
+  let found = controllers.get(controller);
+  if (!found) {
+    controllers.set(controller, (found = { id: numbered++ }));
+    // Effect UI compares props with `Equal.equals`, which takes two of core's
+    // controllers that nothing has attached yet for equal, and drops a swap.
+    Equal.byReferenceUnsafe(controller);
+  }
+  return found;
+};
+
+// Keeps the instance of `handle` from the first render on, and hands it the
+// render's options: with no part in the page, no mount does.
+function keep(hold: Hold, handle: Handle) {
+  if (!hold.handle) {
+    const releases = chainOf(handle).map(acquire);
+    const entry = live.get(handle.id)!;
+    entry.held = hold.sink;
+    hold.release = () => {
+      if (entry.held === hold.sink) {
+        entry.held = undefined;
+        // The instance lets the controller go now, unless a render gave it another
+        // since: one kept a microtask longer would still have it in core's eyes,
+        // and core gives it back only to an instance that doesn't.
+        if ((entry.options as { controller?: object }).controller === hold.controller) {
+          entry.options = { ...entry.options, controller: undefined };
+          entry.instance.setOptions({ ...entry.options, id: handle.id });
+        }
+      }
+      releases.reverse().forEach((release) => release());
+    };
+  }
+  hold.handle = handle;
+  // As a mount's render does, so a change core reports waits for the render to finish.
+  rendering++;
+  try {
+    chainOf(handle).forEach(handOver);
+  } finally {
+    rendering--;
+  }
+}
+
+/**
+ * Keeps a component's instance for as long as the component lives, where a
+ * part's mount keeps it only while the part is in the page. A controller
+ * reaches the instance it is attached to, so a component given one returns
+ * this from `subscriptions`, and names the handle its `parts` made with
+ * `holding`, which decides the instance kept. Messages go through it while no
+ * part is in the page. `rerender` is a message that renders the component
+ * again, which a hold that starts before any render of the component has it
+ * sends, so that render names the instance.
+ */
+export const held = <Msg>(
+  controller: object | undefined,
+  rerender: Msg,
+): ReadonlyArray<Subscription.Subscription<Msg>> =>
+  controller === undefined
+    ? []
+    : [
+        // Started again for another controller, which the instance then takes.
+        Subscription.direct<object, Msg>(
+          "HoldInstance",
+          controlled(controller).id,
+          controller,
+          (_, controls) => {
+            const hold: Hold = {
+              controller,
+              handle: undefined,
+              release: () => {},
+              sink: (message) => controls.emit(message as Msg),
+            };
+            const own = controlled(controller);
+            own.hold = hold;
+            // Effect UI starts a subscription after the component's first render,
+            // and before its render in an update, and a render while another
+            // component's hold had the controller went there. Only the
+            // component's own render names its instance, so it renders again,
+            // through Effect UI, before anything that runs once it commits.
+            controls.enter(() => {
+              if (!hold.handle && typeof document !== "undefined") {
+                controls.emit(rerender);
+              }
+            });
+            return () => {
+              if (own.hold === hold) {
+                own.hold = undefined;
+              }
+              hold.release();
+            };
+          },
+        ),
+      ];
+
+/** Names the handle this render made for the component `controller` drives. See `held`. */
+export function holding(controller: object | undefined, handle: Handle) {
+  if (controller === undefined || typeof document === "undefined") {
+    return;
+  }
+  const { hold } = controlled(controller);
+  // Only a hold no component has yet, or this one's: another component's
+  // render, like a server's, or the one before a remount, leaves it be.
+  if (hold && (!hold.handle || hold.handle.id === handle.id)) {
+    keep(hold, handle);
+  }
 }
 
 // Outermost first: an instance is made, and gets its options, after the one it reads.
@@ -261,8 +437,13 @@ function deliver(node: Element, to: string, message: unknown) {
   const outer = carried;
   carried = { to, message };
   try {
-    // It doesn't bubble, so only this element's handler hears it.
-    node.dispatchEvent(new Event(messageEvent));
+    // It doesn't bubble, so only this element's handler hears it. Inside a
+    // shadow tree it has to: Effect UI listens on the element the app is
+    // mounted on, which only a composed event reaches, and finds a composed
+    // event's own element only when it bubbles. The element's handler still
+    // takes it first.
+    const shadowed = node.getRootNode() instanceof ShadowRoot;
+    node.dispatchEvent(new Event(messageEvent, { bubbles: shadowed, composed: shadowed }));
   } finally {
     carried = outer;
   }
@@ -282,6 +463,7 @@ type Binding = {
   /** The component's message for a change core made on its own. */
   readonly onChange: unknown;
   readonly after: After | undefined;
+  readonly into: ParentNode | undefined;
 };
 
 // Only the spec harness listens, in `fixtures/hydrate.ts`: Effect UI repairs a
@@ -293,10 +475,30 @@ function attach(node: Element, first: Handle) {
   const releases = chainOf(first).map(acquire);
   const entry = live.get(first.id)!;
   const sink = (message: unknown) => deliver(node, first.id, message);
-  entry.sinks.add(sink);
+  entry.sinks.set(sink, node);
   let part: Part | undefined;
   let leave = () => {};
   let current: Binding | undefined;
+  // Where Effect UI had the element when this mount moved it out, which it
+  // goes back to before Effect UI takes it out. Only an element given a
+  // container ever moves: Effect UI moves elements too, like a kept child's.
+  let home: ParentNode | null = null;
+  const place = (into: ParentNode | undefined) => {
+    const from = home ?? node.parentNode;
+    // Only within one tree: across a shadow root's edge the ids that name and
+    // anchor a popup, like `aria-labelledby`, point at nothing.
+    if (into && from && into.getRootNode() === from.getRootNode()) {
+      if (node.parentNode !== into) {
+        home = from;
+        into.appendChild(node);
+      }
+    } else if (home) {
+      if (node.parentNode !== home) {
+        home.appendChild(node);
+      }
+      home = null;
+    }
+  };
   // What core showed when the component last rendered or was last told to.
   let told: Snapshot | undefined;
   // From the props this mount rendered: parts with no key of their own, like
@@ -322,11 +524,16 @@ function attach(node: Element, first: Handle) {
       rendering++;
       try {
         chainOf(shown.handle).forEach(handOver);
+        if (shown.feature) {
+          entry.instance.use(shown.feature);
+        }
         // Props that change a part's key name another part.
         const next = entry.instance.part(shown.slot, shown.props, true);
         commit(next, shown.props);
         // Before it binds, so the parts whose mounts run after it read the consumer's id.
         takeOwnId(next, shown.id);
+        // Before it binds too: a popup that moves once core has shown it leaves the top layer.
+        place(binding.into);
         if (next !== part) {
           leave();
           part = next;
@@ -357,6 +564,7 @@ function attach(node: Element, first: Handle) {
     detach() {
       leave();
       part = undefined;
+      place(undefined);
       entry.sinks.delete(sink);
       releases.reverse().forEach((release) => release());
     },
@@ -367,8 +575,15 @@ const isBinding = (u: unknown): u is Binding => typeof u === "object" && u !== n
 
 const BindPart = Mount.make(
   "BindPart",
-  // Compared by identity, so every render reaches the mount.
-  { args: { binding: Schema.declare(isBinding, { expected: "Binding" }) } },
+  // Compared by identity, so every render reaches the mount, and the
+  // comparison never walks a handle's options, like a submenu's `parent` getter.
+  {
+    args: {
+      binding: Schema.declare(isBinding, { expected: "Binding" }).pipe(
+        Schema.overrideToEquivalence(() => (a, b) => a === b),
+      ),
+    },
+  },
   (node: unknown, { binding }, changes) =>
     Effect.gen(function* () {
       if (!(node instanceof Element)) {
@@ -399,12 +614,19 @@ const BindPart = Mount.make(
  * takes core's messages, and the mount that binds the element. `onChange` is
  * the component's message for a change core made on its own. Every other
  * message is one `emit` sent.
+ *
+ * `into` is where the element goes instead of where the view has it, like a
+ * popup's container. The mount moves it there, and back before Effect UI
+ * takes it out, so the part draws it inside an element of its own, which
+ * stays. Effect UI hears events on the element the app is mounted on, so
+ * `into` has to be inside that one. It also has to be in the element's own
+ * tree, a document or a shadow root, or the element stays where it is.
  */
 export const drawn = <Msg, P extends Primitive, S extends SlotName<P>>(
   builder: View.ContainerBuilder<Msg>,
   shown: Shown<P, S>,
   onChange: Msg,
-  after?: After,
+  { after, into }: { readonly after?: After; readonly into?: ParentNode | undefined } = {},
 ) =>
   builder
     // Without the attributes core leaves unset, which would remove the consumer's own.
@@ -412,7 +634,7 @@ export const drawn = <Msg, P extends Primitive, S extends SlotName<P>>(
     .on(messageEvent, () =>
       carried?.to === shown.handle.id ? (carried.message as Msg) : undefined,
     )
-    .onMount(BindPart({ binding: { shown: shown as unknown as Shown, onChange, after } }));
+    .onMount(BindPart({ binding: { shown: shown as unknown as Shown, onChange, after, into } }));
 
 /**
  * A part that is drawn only while core says it's present, like a tab's panel

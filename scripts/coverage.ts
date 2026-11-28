@@ -10,7 +10,18 @@
 // unless it holds only `test.fixme`s.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { interrupted, problems, ran, skips, tally, type Counts, type Report } from "./gate.ts";
+import {
+  exemptionOf,
+  interrupted,
+  passes,
+  problems,
+  ran,
+  skips,
+  tally,
+  type Counts,
+  type Exemption,
+  type Report,
+} from "./gate.ts";
 import { opened, owned, ownShipped, shipped } from "./overlay.ts";
 import {
   baseline as baselineFile,
@@ -27,7 +38,7 @@ if (!existsSync(reportFile)) {
 const report = JSON.parse(readFileSync(reportFile, "utf8")) as Report;
 const { fixtures: baseline, exempt } = JSON.parse(readFileSync(baselineFile, "utf8")) as {
   fixtures: Record<string, string[]>;
-  exempt: Record<string, string>;
+  exempt: Record<string, Exemption>;
 };
 
 // A fixture every adapter can have is one React has, as `<name>/react.tsx`.
@@ -46,7 +57,14 @@ const own = owned();
 console.log(`Own fixtures, counted apart: ${own.length} (${own.join(", ")}).`);
 
 const counts = tally(report);
-const { expected = {}, own: ownFiles = {}, args = "" } = report.config.metadata ?? {};
+const {
+  expected = {},
+  own: ownFiles = {},
+  variants = {},
+  args = "",
+} = report.config.metadata ?? {};
+// Every project that runs upstream's specs: one per framework, and the ones that run a framework's fixtures another way.
+const projects = [...frameworks, ...Object.keys(variants)];
 
 const row = (file: string, { passed, skipped, failed, fixme }: Counts) =>
   `  ${file.padEnd(32)} ${passed} / ${skipped} / ${failed} / ${fixme}`;
@@ -54,7 +72,7 @@ const heading = (project: string) => `\n${project}: passed / skipped / failed / 
 const sorted = (project: string) =>
   [...(counts.get(project) ?? [])].sort(([a], [b]) => a.localeCompare(b));
 
-for (const project of frameworks) {
+for (const project of projects) {
   const files = sorted(project);
   const tested = files.filter(([, count]) => ran(count));
   console.log(heading(project));
@@ -71,23 +89,25 @@ for (const project of Object.keys(ownProjects)) {
   }
 }
 
-for (const [title, why] of Object.entries(exempt)) {
-  console.log(`\nExempt: ${title}. ${why}`);
+for (const [title, exemption] of Object.entries(exempt)) {
+  const { why, runsIn } = exemptionOf(exemption);
+  console.log(`\nExempt: ${title}. ${why}${runsIn.length ? ` Runs in ${runsIn.join(", ")}.` : ""}`);
 }
 
 const found = problems({
   counts,
-  projects: frameworks,
+  projects,
   expected,
   ownProjects: Object.keys(ownProjects),
   own: ownFiles,
   args,
   interrupted: interrupted(report),
-  frameworkOf: ownProjects,
+  frameworkOf: { ...ownProjects, ...variants },
   shipped: ours,
   ownShipped: ourOwn,
   opened: opened(),
   skips: skips(report),
+  passes: passes(report),
   baseline,
   exempt,
 });

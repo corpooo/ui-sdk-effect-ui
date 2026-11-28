@@ -8,7 +8,11 @@ type Fixture = Parameters<
   typeof HtmlHydrate.hydrateEffect<string, {}, any, any, never, never, any>
 >[0];
 
-type Recorded = Window & { __hydrationErrors: string[]; __serverHtml: string };
+type Recorded = Window & {
+  __hydrationErrors: string[];
+  __serverHtml: string;
+  __visibleBeforeHydration: boolean;
+};
 
 /**
  * Resolves once the fixture has adopted the server's HTML. Effect UI reports
@@ -27,6 +31,10 @@ async function hydrateFixture(root: HTMLElement, fixture: Fixture) {
   root.innerHTML = html;
   // What the page shows before hydration.
   recorded.__serverHtml = root.innerHTML;
+  // Whether open content shows before any script runs on it, as server HTML would.
+  recorded.__visibleBeforeHydration = !!root
+    .querySelector<HTMLElement>('[data-slot$="-content"]')
+    ?.checkVisibility();
   const records: MutationRecord[] = [];
   const changes = new MutationObserver((delivered) => records.push(...delivered));
   changes.observe(root, { subtree: true, attributes: true, characterData: true, childList: true });

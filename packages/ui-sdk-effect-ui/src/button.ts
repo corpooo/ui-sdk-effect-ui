@@ -83,7 +83,9 @@ export const Button = Html.component({
       /** Whether core shows it pending, which follows the `pending` prop a render later. */
       pending: root.state.pending,
       root: p.part((builder) =>
-        drawn(builder, root, ButtonMessage.ChangedPart(), pendingWhile(pending === true)),
+        drawn(builder, root, ButtonMessage.ChangedPart(), {
+          after: pendingWhile(pending === true),
+        }),
       ),
     };
   },

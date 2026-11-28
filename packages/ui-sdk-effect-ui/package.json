@@ -15,6 +15,7 @@
   "type": "module",
   "exports": {
     "./button": "./src/button.ts",
+    "./menu": "./src/menu.ts",
     "./separator": "./src/separator.ts",
     "./tabs": "./src/tabs.ts",
     "./toggle": "./src/toggle.ts",
