@@ -129,7 +129,7 @@ export const Tabs = Html.component({
     const changed = TabsMessage.ChangedPart();
     const root = shown(instance, "root", {});
     const list = shown(instance, "list", {});
-    const tab = ({ id, ...props }: TabsTab) => shown(instance, "tab", defined(props), id);
+    const tab = ({ id, ...props }: TabsTab) => shown(instance, "tab", defined(props), { id });
     const panel = p.part((builder, panel: ReturnType<typeof shown<typeof tabs, "panel">>) =>
       drawn(builder, panel, changed),
     );
@@ -161,7 +161,7 @@ export const Tabs = Html.component({
        * `keepMounted` to get a hidden element instead.
        */
       panel: whilePresent(panel, ({ id, ...props }: TabsPanel) =>
-        shown(instance, "panel", defined(props), id),
+        shown(instance, "panel", defined(props), { id }),
       ),
     };
   },
