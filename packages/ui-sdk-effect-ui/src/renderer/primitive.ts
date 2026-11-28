@@ -279,16 +279,15 @@ function acquire(handle: Handle) {
 // keeps that one instance, and a render of any other component with the same
 // controller, like a server's or another menu's, leaves it alone.
 type Hold = {
+  readonly controller: object;
   handle: Handle | undefined;
   release: () => void;
   readonly sink: (message: unknown) => void;
 };
 
-// All a controller has here. `id` numbers it, as a subscription's
-// dependencies take only primitives. `unheld` is the handle a component
-// rendered while no hold had the controller, which the subscription that
-// starts after that render takes. Only in a browser, as `live` is.
-type Controlled = { readonly id: number; hold?: Hold | undefined; unheld?: Handle | undefined };
+// All a controller has here: a number, as a subscription's dependencies take
+// only primitives, and the hold that has it now. Only in a browser, as `live` is.
+type Controlled = { readonly id: number; hold?: Hold | undefined };
 const controllers = new WeakMap<object, Controlled>();
 let numbered = 0;
 const controlled = (controller: object) => {
@@ -309,6 +308,13 @@ function keep(hold: Hold, handle: Handle) {
     hold.release = () => {
       if (entry.held === hold.sink) {
         entry.held = undefined;
+        // The instance lets the controller go now, unless a render gave it another
+        // since: one kept a microtask longer would still have it in core's eyes,
+        // and core gives it back only to an instance that doesn't.
+        if ((entry.options as { controller?: object }).controller === hold.controller) {
+          entry.options = { ...entry.options, controller: undefined };
+          entry.instance.setOptions({ ...entry.options, id: handle.id });
+        }
       }
       releases.reverse().forEach((release) => release());
     };
@@ -329,10 +335,13 @@ function keep(hold: Hold, handle: Handle) {
  * reaches the instance it is attached to, so a component given one returns
  * this from `subscriptions`, and names the handle its `parts` made with
  * `holding`, which decides the instance kept. Messages go through it while no
- * part is in the page.
+ * part is in the page. `rerender` is a message that renders the component
+ * again, which a hold that starts before any render of the component has it
+ * sends, so that render names the instance.
  */
 export const held = <Msg>(
   controller: object | undefined,
+  rerender: Msg,
 ): ReadonlyArray<Subscription.Subscription<Msg>> =>
   controller === undefined
     ? []
@@ -344,20 +353,20 @@ export const held = <Msg>(
           controller,
           (_, controls) => {
             const hold: Hold = {
+              controller,
               handle: undefined,
               release: () => {},
               sink: (message) => controls.emit(message as Msg),
             };
             const own = controlled(controller);
             own.hold = hold;
-            // A render that came first named the handle. One still to come, as
-            // for a controller another component just gave up, names it then:
-            // a handle another hold had is that component's, with its options.
-            controls.enter(() => {
-              const handle = own.unheld;
-              own.unheld = undefined;
-              if (handle) {
-                keep(hold, handle);
+            // Effect UI starts a subscription after the component's first render,
+            // and before its render in an update, and a render while another
+            // component's hold had the controller went there. Only the
+            // component's own render names its instance, so it renders again.
+            queueMicrotask(() => {
+              if (own.hold === hold && !hold.handle) {
+                controls.emit(rerender);
               }
             });
             return () => {
@@ -375,15 +384,11 @@ export function holding(controller: object | undefined, handle: Handle) {
   if (controller === undefined || typeof document === "undefined") {
     return;
   }
-  const own = controlled(controller);
-  const { hold } = own;
+  const { hold } = controlled(controller);
+  // Only a hold no component has yet, or this one's: another component's
+  // render, like a server's, or the one before a remount, leaves it be.
   if (hold && (!hold.handle || hold.handle.id === handle.id)) {
-    own.unheld = undefined;
     keep(hold, handle);
-  } else {
-    // No hold, or another component's, as for a menu that replaces the one
-    // holding the controller: the hold that starts next takes this render.
-    own.unheld = handle;
   }
 }
 

@@ -90,10 +90,10 @@ export const interrupted = (report: Report) =>
 /** A test that skipped itself, with the fixture it wanted when it skipped for want of one, as upstream's `open` says. */
 export type Skip = { project: string; file: string; title: string; fixture?: string };
 
-/** Each test that skipped, leaving out `test.fixme`s and tests a stopped run cut short. */
+/** Each test that skipped, by `test.skip` or `test.fixme`, leaving out tests a stopped run cut short. */
 export const skips = (report: Report): Skip[] =>
   testsOf(report)
-    .filter(({ test }) => outcome(test) === "skipped" && !stopped(test))
+    .filter(({ test }) => test.status === "skipped" && !stopped(test))
     .map(({ file, title, test }) => {
       const fixture = (test.annotations ?? [])
         .map(({ description = "" }) => /^No ([\w-]+) fixture for /.exec(description)?.[1])

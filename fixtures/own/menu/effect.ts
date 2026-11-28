@@ -15,6 +15,8 @@ const refuses = (open: boolean) =>
   params.has("refuse") && (params.get("refuse") !== "close" || !open);
 const nestedHeld = params.get("nested") === "held";
 const controllerHeld = params.get("controller") === "held";
+// `?bounce` has a press of Run give the controller to the other commands menu, and the close take it back, in one task.
+const bounce = params.has("bounce");
 // `?sheet` adds a menu in a container that a touch phone shows as a sheet.
 const sheetContainer = params.has("sheet") ? document.createElement("div") : undefined;
 
@@ -34,6 +36,9 @@ const FixtureMessage = UiSchema.TaggedEnum({
   ClickedSheetCommands: {},
   ClickedSwapControllers: {},
   ClickedReplaceCommands: {},
+  ClickedRewrapCommands: {},
+  PickedCommand: {},
+  ClosedCommands: {},
   ClickedOpenWithOtherController: {},
   RequestedCheckedNested: { path: Schema.Array(Schema.String), value: Schema.String },
 });
@@ -73,6 +78,8 @@ const Fixture = Html.component({
     swapped: Schema.Boolean,
     // Whether another commands menu, keyed apart, took the place of the first.
     replaced: Schema.Boolean,
+    // Whether the element around the commands menu was keyed anew, which mounts it again at its path.
+    rewrapped: Schema.Boolean,
   }),
   message: FixtureMessage,
 }).make({
@@ -86,6 +93,7 @@ const Fixture = Html.component({
     sheet: false,
     swapped: false,
     replaced: false,
+    rewrapped: false,
   }),
   update: ($, message) =>
     FixtureMessage.match(message, {
@@ -107,6 +115,9 @@ const Fixture = Html.component({
       ClickedSheetCommands: () => $.evolve({ sheet: true }),
       ClickedSwapControllers: () => $.evolve({ swapped: true }),
       ClickedReplaceCommands: () => $.evolve({ replaced: true }),
+      ClickedRewrapCommands: () => $.evolve({ rewrapped: true }),
+      PickedCommand: () => $.evolve({ swapped: true }),
+      ClosedCommands: () => $.evolve({ swapped: false }),
       ClickedOpenWithOtherController: () => $.run(OpenOtherMenu.make({}).pipe(Command.asNoop)),
     }),
   view: (h, model) =>
@@ -210,30 +221,40 @@ const Fixture = Html.component({
       }),
       h.button.on("click", () => FixtureMessage.ClickedShowContent()).children("Show content"),
       // No trigger, and no content while it's closed: every part is absent until the controller opens it.
-      Menu(h, {
-        key: model.replaced ? "controller-replaced" : "controller",
-        props: {
-          controller: model.swapped ? otherController : controller,
-          ...(controllerHeld && { open: model.controlled }),
-          ...(model.sheet && { presentation: "sheet" as const }),
-        },
-        onEmit: {
-          ...ignored,
-          RequestedOpen: ({ open }) =>
-            controllerHeld ? FixtureMessage.RequestedOpenController({ open }) : undefined,
-        },
-        view: (menu) =>
-          h.div
-            .style({ display: "contents" })
-            .children(
-              menu
-                .content(h.div.key("content").class("popup").attr("aria-label", "Commands"))
-                ?.children(
-                  menu.item(h.div.class("item"), { value: "run" }).children("Run"),
-                  menu.item(h.div.class("item"), { value: "stop" }).children("Stop"),
+      h.div
+        .key(model.rewrapped ? "rewrapped" : "wrapped")
+        .style({ display: "contents" })
+        .children(
+          Menu(h, {
+            key: model.replaced ? "controller-replaced" : "controller",
+            props: {
+              controller: model.swapped ? otherController : controller,
+              ...(controllerHeld && { open: model.controlled }),
+              ...(model.sheet && { presentation: "sheet" as const }),
+            },
+            onEmit: {
+              ...ignored,
+              RequestedOpen: ({ open }) =>
+                controllerHeld
+                  ? FixtureMessage.RequestedOpenController({ open })
+                  : bounce && !open
+                    ? FixtureMessage.ClosedCommands()
+                    : undefined,
+              Picked: () => (bounce ? FixtureMessage.PickedCommand() : undefined),
+            },
+            view: (menu) =>
+              h.div
+                .style({ display: "contents" })
+                .children(
+                  menu
+                    .content(h.div.key("content").class("popup").attr("aria-label", "Commands"))
+                    ?.children(
+                      menu.item(h.div.class("item"), { value: "run" }).children("Run"),
+                      menu.item(h.div.class("item"), { value: "stop" }).children("Stop"),
+                    ),
                 ),
-            ),
-      }),
+          }),
+        ),
       // The menu the other controller drives, until the two swap.
       Menu(h, {
         key: "other-commands",
@@ -260,6 +281,9 @@ const Fixture = Html.component({
       h.button
         .on("click", () => FixtureMessage.ClickedReplaceCommands())
         .children("Replace commands"),
+      h.button
+        .on("click", () => FixtureMessage.ClickedRewrapCommands())
+        .children("Rewrap commands"),
       h.button
         .on("click", () => FixtureMessage.ClickedSheetCommands())
         .children("Commands as a sheet"),

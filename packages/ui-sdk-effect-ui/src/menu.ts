@@ -237,7 +237,8 @@ export const Menu = Html.component({
       ChangedPart: () => $.evolve({ revision: (count) => count + 1 }),
     }),
   // The instance lives as long as the menu does, so a controller reaches it with no part in the page.
-  subscriptions: ($) => held<typeof MenuMessage.Type>($.props.controller),
+  subscriptions: ($) =>
+    held<typeof MenuMessage.Type>($.props.controller, MenuMessage.ChangedPart()),
   parts: (p, model) => {
     const { open, initialOpen: _, container, ...settings } = p.props;
     const changed = MenuMessage.ChangedPart();

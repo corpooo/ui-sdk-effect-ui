@@ -354,5 +354,7 @@ test("each skip is read from the report by its title, with the fixture it wanted
   expect(found).toEqual([
     { project: "own", file: "f.spec.ts", title: "f.spec.ts › opens", fixture: "own-tabs-keyz" },
     { project: "own", file: "f.spec.ts", title: "f.spec.ts › controlled › closes" },
+    // A `test.fixme` skips too: one upstream aims at our framework needs an exemption.
+    { project: "own", file: "f.spec.ts", title: "f.spec.ts › controlled › planned" },
   ]);
 });

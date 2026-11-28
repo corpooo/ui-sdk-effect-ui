@@ -220,6 +220,16 @@ for (const owner of ["Kept", "Held"]) {
     await expect(menuNamed(page, "Commands")).toBeVisible();
   });
 
+  test(`${owner}: a menu mounted again at its own path opens with its controller`, async ({
+    page,
+    open,
+  }) => {
+    await open("own-menu", owner === "Held" ? { controller: "held" } : {});
+    await buttonNamed(page, "Rewrap commands").click();
+    await buttonNamed(page, "Open from outside the app").click();
+    await expect(menuNamed(page, "Commands")).toBeVisible();
+  });
+
   test(`${owner}: two menus that swap controllers each open with the other's`, async ({
     page,
     open,
@@ -236,6 +246,20 @@ for (const owner of ["Kept", "Held"]) {
     await expect(page.getByRole("menu")).toHaveCount(1);
   });
 }
+
+test("a controller given away and taken back in one task still opens its menu", async ({
+  page,
+  open,
+}) => {
+  // A press of Run gives the controller to the other menu, and the close that follows takes it back.
+  await open("own-menu", { bounce: "" });
+  const opener = buttonNamed(page, "Open from outside the app");
+  await opener.click();
+  await itemNamed(page, "Run").click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await opener.click();
+  await expect(menuNamed(page, "Commands")).toBeVisible();
+});
 
 test.describe("on a touch phone", () => {
   test.use({ viewport: { width: 390, height: 700 }, hasTouch: true, isMobile: true });
