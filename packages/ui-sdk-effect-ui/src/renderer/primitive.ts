@@ -43,10 +43,9 @@ import {
   attrs,
   bind,
   commit,
-  directNames,
   partState,
   present,
-  sameValue,
+  sameSlotState,
   subscribe,
   takeOwnId,
   unwatched,
@@ -209,8 +208,9 @@ export function emit(handle: Handle, message: unknown) {
 function acquire(handle: Handle) {
   let entry = live.get(handle.id);
   if (!entry) {
-    const options = optionsOf(handle);
-    entry = { instance: handle.primitive(options), options, uses: 0, sinks: new Set() };
+    const instance = handle.primitive(optionsOf(handle));
+    // The render's own options, so its handover finds them taken.
+    entry = { instance, options: handle.options, uses: 0, sinks: new Set() };
     live.set(handle.id, entry);
   }
   entry.uses++;
@@ -243,23 +243,11 @@ function handOver(handle: Handle) {
 // Core listens for every event itself: an Effect UI handler gets a payload, and core's need the event.
 const host = { by: "framework", attaches: [] } as const;
 
-// Attributes in `skip` may differ.
-const sameRecord = (
-  a: Record<string, unknown>,
-  b: Record<string, unknown>,
-  skip: readonly string[] = [],
-) => {
-  const keys = Object.keys(a);
-  return (
-    keys.length === Object.keys(b).length &&
-    keys.every((key) => sameValue(a[key], b[key]) || skip.includes(key))
-  );
-};
-const same = (a: Snapshot, b: Snapshot | undefined, skip?: readonly string[]) =>
+const same = (a: Snapshot, b: Snapshot | undefined) =>
   b !== undefined &&
   a.present === b.present &&
-  sameRecord(a.attrs, b.attrs, skip) &&
-  sameRecord(a.state, b.state);
+  sameSlotState(a.attrs, b.attrs) &&
+  sameSlotState(a.state, b.state);
 
 // A message reaches the component as an event on the part's element, which
 // Effect UI's handler below answers with the message. An event is delivered
@@ -269,7 +257,7 @@ const same = (a: Snapshot, b: Snapshot | undefined, skip?: readonly string[]) =>
 // its own, so a message names the instance it is for.
 const messageEvent = "ui-sdk-message";
 let carried: { readonly to: string; readonly message: unknown } | undefined;
-function deliver(node: HTMLElement, to: string, message: unknown) {
+function deliver(node: Element, to: string, message: unknown) {
   const outer = carried;
   carried = { to, message };
   try {
@@ -296,7 +284,12 @@ type Binding = {
   readonly after: After | undefined;
 };
 
-function attach(node: HTMLElement, first: Handle) {
+// Only the spec harness listens, in `fixtures/hydrate.ts`: Effect UI repairs a
+// hydration mismatch before any mount runs, and says nothing, so the harness
+// counts what changed until core first writes to a part's element.
+const bindEvent = "ui-sdk-bind";
+
+function attach(node: Element, first: Handle) {
   const releases = chainOf(first).map(acquire);
   const entry = live.get(first.id)!;
   const sink = (message: unknown) => deliver(node, first.id, message);
@@ -306,17 +299,17 @@ function attach(node: HTMLElement, first: Handle) {
   let current: Binding | undefined;
   // What core showed when the component last rendered or was last told to.
   let told: Snapshot | undefined;
-  const read = (part: Part): Snapshot => snapshot(part, current?.shown.id);
-  // Tells the component when core shows something it hasn't rendered. Core
-  // writes a slot's `direct` attributes to the element itself, so a change to
-  // only those renders nothing. The check after a render compares them too,
-  // since that render may have read state older than what core last wrote.
+  // From the props this mount rendered: parts with no key of their own, like
+  // tab icons, share one core part, whose props are the last one committed.
+  const read = (part: Part): Snapshot =>
+    snapshot(part, current?.shown.id, current?.shown.props ?? part.props);
+  // Tells the component when core shows something it hasn't rendered.
   const check = (bound: Part) => {
     if (bound !== part) {
       return;
     }
     const now = read(bound);
-    if (!same(now, told, directNames(bound))) {
+    if (!same(now, told)) {
       told = now;
       deliver(node, first.id, current?.onChange);
     }
@@ -337,8 +330,10 @@ function attach(node: HTMLElement, first: Handle) {
         if (next !== part) {
           leave();
           part = next;
+          node.dispatchEvent(new Event(bindEvent));
           const cleanups = [
-            bind(next, node, host),
+            // Typed for HTML, though core binds SVG too, like a tab's icon.
+            bind(next, node as HTMLElement, host),
             // A change during a render waits for every mount to take that
             // render, which most changes then turn out to be part of.
             subscribe(next, () => (rendering ? queueMicrotask(() => check(next)) : check(next))),
@@ -376,7 +371,7 @@ const BindPart = Mount.make(
   { args: { binding: Schema.declare(isBinding, { expected: "Binding" }) } },
   (node: unknown, { binding }, changes) =>
     Effect.gen(function* () {
-      if (!(node instanceof HTMLElement)) {
+      if (!(node instanceof Element)) {
         return Component.noop;
       }
       const element = yield* Effect.acquireRelease(

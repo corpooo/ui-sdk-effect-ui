@@ -67,12 +67,14 @@ vp install
 pnpm upstream   # upstream's dependencies, core's declarations, Chromium
 vp check
 vp test
-pnpm specs      # upstream's specs against our fixtures
+pnpm specs      # upstream's specs against our fixtures, and our own specs
 pnpm coverage   # what that run covered
 ```
+
+There is no hosted CI. `vp run ci` runs every step above in order, and must pass before a push or merge.
 
 `AGENTS.md` says how the spec run works and how to add a component.
 
 ## License
 
-MIT. The fixtures under `fixtures/` are rewritten from UI SDK's, which are Apache-2.0. See `NOTICE`.
+MIT. The fixtures under `fixtures/`, but for `fixtures/own/`, are rewritten from UI SDK's, which are Apache-2.0. See `NOTICE`.

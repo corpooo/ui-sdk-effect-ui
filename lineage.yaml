@@ -7,7 +7,7 @@ sources:
     upstream: https://github.com/vercel-labs/ui
   - name: UI SDK
     how: rewritten
-    what: the playground fixtures under fixtures/, from its React ones, under Apache-2.0
+    what: the playground fixtures under fixtures/, but for fixtures/own/, from its React ones, under Apache-2.0
     upstream: https://github.com/vercel-labs/ui
   - name: Effect UI
     how: dependency

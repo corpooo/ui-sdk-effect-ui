@@ -1,5 +1,19 @@
 {
-  "fixtures": 5,
+  "fixtures": {
+    "effect": [
+      "tabs",
+      "tabs-perf",
+      "tabs-render",
+      "toggle",
+      "toggle-render",
+      "own-hydration-mismatch",
+      "own-tabs-ids",
+      "own-tabs-keys",
+      "own-tabs-panels",
+      "own-toggle-presses"
+    ],
+    "effect-ssr": ["tabs", "toggle", "own-hydration-mismatch", "own-tabs-ids"]
+  },
   "exempt": {
     "elements.spec.ts": "Custom elements only: it skips every framework but web."
   }

@@ -1,16 +1,20 @@
 // The coverage gate. A spec skips itself where a fixture is missing, so a
 // run can be green while it checks nothing. After `pnpm specs`, this says
 // which of upstream's fixtures we have and what ran for them, and fails when
-// a spec file for a fixture we ship ran no test, or we ship fewer fixtures
-// than coverage-baseline.json says. A spec file that skips every test for us
-// by its own rule is listed there as exempt, with why.
+// a spec file for a fixture we ship ran no test, a fixture we ship is opened
+// by no spec, a test skipped for want of a fixture we have, or a fixture
+// coverage-baseline.json names is gone. A spec file that skips every test
+// for us by its own rule is listed there as exempt, with why. Our own specs
+// and fixtures are counted apart, and each own spec file must run a test,
+// unless it holds only `test.fixme`s.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { problems, tally, type Report } from "./gate.ts";
-import { shipped } from "./overlay.ts";
+import { interrupted, missing, problems, ran, tally, type Counts, type Report } from "./gate.ts";
+import { opened, owned, ownShipped, shipped } from "./overlay.ts";
 import {
   baseline as baselineFile,
   frameworks,
+  ownProjects,
   report as reportFile,
   upstreamFixtures,
 } from "./paths.ts";
@@ -21,7 +25,7 @@ if (!existsSync(reportFile)) {
 }
 const report = JSON.parse(readFileSync(reportFile, "utf8")) as Report;
 const { fixtures: baseline, exempt } = JSON.parse(readFileSync(baselineFile, "utf8")) as {
-  fixtures: number;
+  fixtures: Record<string, string[]>;
   exempt: Record<string, string>;
 };
 
@@ -30,22 +34,40 @@ const available = readdirSync(upstreamFixtures).filter((name) =>
   existsSync(join(upstreamFixtures, name, "react.tsx")),
 );
 const ours = shipped();
-console.log(`Fixtures: ${ours.length} of upstream's ${available.length} (${ours.join(", ")}).`);
-if (ours.length > baseline) {
-  console.log(`That's more than the baseline of ${baseline}: raise it in coverage-baseline.json.`);
+const ourOwn = ownShipped();
+for (const framework of frameworks) {
+  const names = ours[framework] ?? [];
+  console.log(
+    `${framework} fixtures: ${names.length} of upstream's ${available.length} (${names.join(", ")}).`,
+  );
 }
+const own = owned();
+console.log(`Own fixtures, counted apart: ${own.length} (${own.join(", ")}).`);
 
 const counts = tally(report);
-const expected = report.config.metadata?.expected ?? {};
+const { expected = {}, own: ownFiles = {}, args = "" } = report.config.metadata ?? {};
+
+const row = (file: string, { passed, skipped, failed, fixme }: Counts) =>
+  `  ${file.padEnd(32)} ${passed} / ${skipped} / ${failed} / ${fixme}`;
+const heading = (project: string) => `\n${project}: passed / skipped / failed / fixme`;
+const sorted = (project: string) =>
+  [...(counts.get(project) ?? [])].sort(([a], [b]) => a.localeCompare(b));
+
 for (const project of frameworks) {
-  const files = [...(counts.get(project) ?? [])].sort(([a], [b]) => a.localeCompare(b));
-  const ran = files.filter(([, count]) => count.passed + count.failed > 0);
-  console.log(`\n${project}: passed / skipped / failed`);
-  for (const [file, { passed, skipped, failed }] of ran) {
-    console.log(`  ${file.padEnd(32)} ${passed} / ${skipped} / ${failed}`);
+  const files = sorted(project);
+  const tested = files.filter(([, count]) => ran(count));
+  console.log(heading(project));
+  for (const [file, count] of tested) {
+    console.log(row(file, count));
   }
   // Specs that open no fixture by name load a page of their own, for another adapter.
-  console.log(`  ${files.length - ran.length} more spec files only skipped.`);
+  console.log(`  ${files.length - tested.length} more spec files only skipped.`);
+}
+for (const project of Object.keys(ownProjects)) {
+  console.log(heading(project));
+  for (const [file, count] of sorted(project)) {
+    console.log(row(file, count));
+  }
 }
 
 for (const [file, why] of Object.entries(exempt)) {
@@ -56,9 +78,15 @@ const found = problems({
   counts,
   projects: frameworks,
   expected,
-  args: report.config.metadata?.args ?? "",
-  available,
+  ownProjects: Object.keys(ownProjects),
+  own: ownFiles,
+  args,
+  interrupted: interrupted(report),
+  frameworkOf: ownProjects,
   shipped: ours,
+  ownShipped: ourOwn,
+  opened: opened(),
+  missing: missing(report),
   baseline,
   exempt,
 });
@@ -66,4 +94,4 @@ if (found.length) {
   console.error(`\nNot covered:\n${found.map((problem) => `  ${problem}`).join("\n")}`);
   process.exit(1);
 }
-console.log("\nEvery spec file for a fixture we ship ran.");
+console.log("\nEvery spec file for a fixture we ship ran, and every spec of our own.");

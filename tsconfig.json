@@ -26,5 +26,5 @@
       "#dev": ["./upstream/ui/packages/core/dist/foundation/kernel/dev-stub.d.ts"]
     }
   },
-  "include": ["packages", "fixtures", "scripts", "upstream/ui/tests/css.d.ts"]
+  "include": ["packages", "fixtures", "scripts", "specs", "upstream/ui/tests/css.d.ts"]
 }
