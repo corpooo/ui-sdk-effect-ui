@@ -161,6 +161,8 @@ for (const owner of ["Kept", "Held"]) {
     await expect(
       page.getByRole("menuitemcheckbox", { name: "Pinned", exact: true }),
     ).toHaveAttribute("aria-checked", "false");
+    // The parent hears which of the two it was.
+    await expect(page.getByRole("status", { name: "Checks" })).toHaveText("share/pinned");
   });
 
   test(`${owner}: a submenu key with a slash names another submenu than the path it spells`, async ({
@@ -206,6 +208,14 @@ for (const owner of ["Kept", "Held"]) {
     await buttonNamed(page, "Commands as a sheet").click();
     await buttonNamed(page, "Open with controller").click();
     await expect(menuNamed(page, "Commands")).toHaveAttribute("data-presentation", "sheet");
+  });
+
+  test(`${owner}: a controller another menu takes opens that menu`, async ({ page, open }) => {
+    await open("own-menu", owner === "Held" ? { controller: "held" } : {});
+    await buttonNamed(page, "Move controller").click();
+    await buttonNamed(page, "Open with controller").click();
+    await expect(menuNamed(page, "Other commands")).toBeVisible();
+    await expect(page.getByRole("menu")).toHaveCount(1);
   });
 }
 

@@ -190,14 +190,17 @@ export function problems(input: {
     for (const file of files) {
       const count = input.counts.get(project)?.get(file);
       // A file can open a fixture we ship only in tests that skip for the
-      // project by their own rule: every one of its skips is then explained.
+      // project by their own rule: every one of its skips is then explained,
+      // and one at least is such a rule. Skips for fixtures we don't ship alone
+      // would be tests that skipped before they reached ours.
       const skipped = input.skips.filter((skip) => skip.project === project && skip.file === file);
       const allExplained =
         !!count &&
         count.fixme === 0 &&
         count.skipped > 0 &&
         skipped.length === count.skipped &&
-        skipped.every(explained);
+        skipped.every(explained) &&
+        skipped.some(({ fixture }) => !fixture);
       if (!ran(count) && !allExplained) {
         found.push(`${file} opens a fixture we ship, and ran no test in ${project}.`);
       }

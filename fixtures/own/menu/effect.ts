@@ -30,6 +30,8 @@ const FixtureMessage = UiSchema.TaggedEnum({
   ClickedOpenWithController: {},
   RequestedOpenController: { open: Schema.Boolean },
   ClickedSheetCommands: {},
+  ClickedMoveController: {},
+  RequestedCheckedNested: { path: Schema.Array(Schema.String), value: Schema.String },
 });
 
 // A controller opens the menu from outside it, which is work for a Command.
@@ -52,20 +54,26 @@ const Fixture = Html.component({
     held: Schema.Boolean,
     // Every request the held menu made, as `open:reason` or `close:reason`.
     requests: Schema.Array(Schema.String),
+    // Every check the nested menus asked for, as `path/value`.
+    checks: Schema.Array(Schema.String),
     nested: Schema.Boolean,
     hidden: Schema.Boolean,
     controlled: Schema.Boolean,
     sheet: Schema.Boolean,
+    // Whether the controller drives the other commands menu.
+    moved: Schema.Boolean,
   }),
   message: FixtureMessage,
 }).make({
   init: () => ({
     held: false,
     requests: [],
+    checks: [],
     nested: false,
     hidden: false,
     controlled: false,
     sheet: false,
+    moved: false,
   }),
   update: ($, message) =>
     FixtureMessage.match(message, {
@@ -78,11 +86,14 @@ const Fixture = Html.component({
       ClickedOpenFromParent: () => $.evolve({ held: true }),
       ClickedCloseFromParent: () => $.evolve({ held: false }),
       RequestedOpenNested: ({ open }) => $.evolve({ nested: open }),
+      RequestedCheckedNested: ({ path, value }) =>
+        $.evolve({ checks: (checks) => [...checks, [...path, value].join("/")] }),
       PickedUnmountItem: ({ value }) => (value === "hide" ? $.evolve({ hidden: true }) : $.model),
       ClickedShowContent: () => $.evolve({ hidden: false }),
       ClickedOpenWithController: () => $.run(OpenMenu.make({}).pipe(Command.asNoop)),
       RequestedOpenController: ({ open }) => $.evolve({ controlled: open }),
       ClickedSheetCommands: () => $.evolve({ sheet: true }),
+      ClickedMoveController: () => $.evolve({ moved: true }),
     }),
   view: (h, model) =>
     h.div.class("fixture").children(
@@ -124,6 +135,8 @@ const Fixture = Html.component({
           ...ignored,
           RequestedOpen: ({ open }) =>
             nestedHeld ? FixtureMessage.RequestedOpenNested({ open }) : undefined,
+          RequestedChecked: ({ path, value }) =>
+            FixtureMessage.RequestedCheckedNested({ path, value }),
         },
         view: (menu) => {
           const share = menu.sub({ key: "share" });
@@ -159,6 +172,7 @@ const Fixture = Html.component({
             );
         },
       }),
+      h.output.attrs({ role: "status", "aria-label": "Checks" }).children(model.checks.join(" ")),
       Menu(h, {
         key: "unmount",
         onEmit: {
@@ -185,7 +199,7 @@ const Fixture = Html.component({
       Menu(h, {
         key: "controller",
         props: {
-          controller,
+          ...(!model.moved && { controller }),
           ...(controllerHeld && { open: model.controlled }),
           ...(model.sheet && { presentation: "sheet" as const }),
         },
@@ -206,9 +220,26 @@ const Fixture = Html.component({
                 ),
             ),
       }),
+      // The menu the controller drives once it moves here.
+      Menu(h, {
+        key: "other-commands",
+        props: model.moved ? { controller } : {},
+        onEmit: ignored,
+        view: (menu) =>
+          h.div
+            .style({ display: "contents" })
+            .children(
+              menu
+                .content(h.div.key("content").class("popup").attr("aria-label", "Other commands"))
+                ?.children(menu.item(h.div.class("item"), { value: "pause" }).children("Pause")),
+            ),
+      }),
       h.button
         .on("click", () => FixtureMessage.ClickedOpenWithController())
         .children("Open with controller"),
+      h.button
+        .on("click", () => FixtureMessage.ClickedMoveController())
+        .children("Move controller"),
       h.button
         .on("click", () => FixtureMessage.ClickedSheetCommands())
         .children("Commands as a sheet"),

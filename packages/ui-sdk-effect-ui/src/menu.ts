@@ -70,12 +70,20 @@ export const MenuProps = Schema.Struct({
   controller: Schema.optional(Controller),
 });
 
+/**
+ * The keys of the submenus from the menu down to the one an item is in, as
+ * `menu.sub` takes them, and empty for the menu itself. It tells apart items
+ * with the same value in two of them, which are two items.
+ */
+const Path = Schema.Array(Schema.String);
+
 export const MenuModel = Schema.Struct({
   /** Whether it's open, while the props leave `open` out. */
   open: Schema.Boolean,
   /**
-   * Each checkbox item a press has changed, by the menu it is in, as `level`
-   * names it, then by its value. An item given `checked` shows that instead.
+   * Each checkbox item a press has changed, by the menu it is in, as
+   * `levelOf` names its path, then by its value. An item given `checked`
+   * shows that instead.
    */
   checked: Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Boolean)),
   /** Each radio group a press has changed, by the menu it is in, then by its name. A group given `value` shows that instead. */
@@ -89,20 +97,10 @@ export const MenuMessage = UiSchema.TaggedEnum({
   RequestedOpen: { open: Schema.Boolean, reason: Reason },
   /** An item with a value ran, in the menu or one of its submenus. */
   Picked: { value: Schema.String },
-  /** Core asked to check or uncheck a checkbox item of the menu `level` names. */
-  RequestedChecked: {
-    level: Schema.String,
-    value: Schema.String,
-    checked: Schema.Boolean,
-    reason: Reason,
-  },
-  /** Core asked for another item of a radio group of the menu `level` names. */
-  RequestedValue: {
-    level: Schema.String,
-    group: Schema.String,
-    value: Schema.String,
-    reason: Reason,
-  },
+  /** Core asked to check or uncheck a checkbox item of the menu at `path`. */
+  RequestedChecked: { path: Path, value: Schema.String, checked: Schema.Boolean, reason: Reason },
+  /** Core asked for another item of a radio group of the menu at `path`. */
+  RequestedValue: { path: Path, group: Schema.String, value: Schema.String, reason: Reason },
   /** Core changed what a part shows on its own, like the highlight, or content that finished leaving. */
   ChangedPart: {},
 });
@@ -121,13 +119,13 @@ export const MenuEvents = UiSchema.TaggedEnum({
    * accept it, or keep the old one to refuse. An item without `checked` has
    * already taken it.
    */
-  RequestedChecked: { value: Schema.String, checked: Schema.Boolean, reason: Reason },
+  RequestedChecked: { path: Path, value: Schema.String, checked: Schema.Boolean, reason: Reason },
   /**
    * A person chose an item of a radio group. Pass the group its new `value`
    * to accept it, or keep the old one to refuse. A group without `value` has
    * already taken it.
    */
-  RequestedValue: { group: Schema.String, value: Schema.String, reason: Reason },
+  RequestedValue: { path: Path, group: Schema.String, value: Schema.String, reason: Reason },
 });
 
 /** A menu's button, or the item that opens a submenu, as the consumer's `view` passes it to `menu.trigger`. */
@@ -139,7 +137,7 @@ export type MenuContent = MenuContentProps;
 /**
  * An action, as the consumer's `view` passes it to `menu.item`. Its `value`
  * names it among the menu's items and arrives in `Picked`. An item without
- * one takes an `id`.
+ * one takes an `id`, and reports no press.
  */
 export type MenuItem = Omit<MenuItemProps, "onSelect"> & { readonly id?: string };
 
@@ -168,8 +166,12 @@ export type MenuSub = Pick<MenuOptions, "loop" | "delay"> & {
   readonly key: string;
 };
 
-/** Names a menu by the keys of the submenus down to it, `""` for the menu itself. A key may hold a `/`. */
-const levelOf = (keys: ReadonlyArray<string>) => keys.map(encodeURIComponent).join("/");
+/** Names the menu at a path, in its instance's id and in the Model. A key may hold any character. */
+const levelOf = (path: ReadonlyArray<string>) => JSON.stringify(path);
+
+// A record's own entry, and none from its prototype, for a value like `toString`.
+const own = <T>(record: Readonly<Record<string, T>> | undefined, key: string) =>
+  record && Object.hasOwn(record, key) ? record[key] : undefined;
 
 /** Whether an indicator stays in the page while its item is unchecked. */
 type Indicator = { readonly keepMounted?: boolean };
@@ -213,19 +215,19 @@ export const Menu = Html.component({
           MenuEvents.RequestedOpen(request),
         ),
       Picked: (picked) => $.emit(MenuEvents.Picked(picked)),
-      RequestedChecked: ({ level, ...request }) =>
+      RequestedChecked: (request) =>
         $.evolve({
-          checked: (checked) => ({
-            ...checked,
-            [level]: { ...checked[level], [request.value]: request.checked },
-          }),
+          checked: (checked) => {
+            const at = levelOf(request.path);
+            return { ...checked, [at]: { ...own(checked, at), [request.value]: request.checked } };
+          },
         }).emit(MenuEvents.RequestedChecked(request)),
-      RequestedValue: ({ level, ...request }) =>
+      RequestedValue: (request) =>
         $.evolve({
-          values: (values) => ({
-            ...values,
-            [level]: { ...values[level], [request.group]: request.value },
-          }),
+          values: (values) => {
+            const at = levelOf(request.path);
+            return { ...values, [at]: { ...own(values, at), [request.group]: request.value } };
+          },
         }).emit(MenuEvents.RequestedValue(request)),
       ChangedPart: () => $.evolve({ revision: (count) => count + 1 }),
     }),
@@ -257,24 +259,24 @@ export const Menu = Html.component({
         id: name,
         name,
         ...(value === undefined
-          ? defined({ defaultValue: model.values[at]?.[name] ?? initialValue })
+          ? defined({ defaultValue: own(own(model.values, at), name) ?? initialValue })
           : { value }),
         onValueChange: (value: string, details: { reason: string }) =>
           emit(
             root,
-            MenuMessage.RequestedValue({ level: at, group: name, value, reason: details.reason }),
+            MenuMessage.RequestedValue({ path, group: name, value, reason: details.reason }),
           ),
       });
       const checkboxProps = ({ checked, initialChecked, ...props }: MenuCheckboxItem) => ({
         ...defined(props),
         ...(checked === undefined
-          ? defined({ defaultChecked: model.checked[at]?.[props.value] ?? initialChecked })
+          ? defined({ defaultChecked: own(own(model.checked, at), props.value) ?? initialChecked })
           : { checked }),
         onCheckedChange: (checked: boolean, details: { reason: string }) =>
           emit(
             root,
             MenuMessage.RequestedChecked({
-              level: at,
+              path,
               value: props.value,
               checked,
               reason: details.reason,

@@ -273,13 +273,18 @@ function acquire(handle: Handle) {
   };
 }
 
-// The handle a controller's component last rendered, which the subscription
-// that holds its instance starts from. Only in a browser, as `live` is.
+// The handle a controller's component last rendered, which a subscription
+// that starts after that render holds first. Only in a browser, as `live` is.
 const rendered = new WeakMap<object, Handle>();
 
-// A subscription that started before its component rendered with that
-// controller, as when the parent swaps controllers, waiting for that render.
-const waiting = new WeakMap<object, (handle: Handle) => void>();
+// What keeps a controller's instance: the subscription's hold, and the
+// instance it keeps now, which each render of the component names.
+type Hold = {
+  handle: Handle | undefined;
+  release: () => void;
+  readonly sink: (message: unknown) => void;
+};
+const holds = new WeakMap<object, Hold>();
 
 // A number for each controller, as a subscription's dependencies take only primitives.
 const controllers = new WeakMap<object, number>();
@@ -291,12 +296,39 @@ const idOf = (controller: object) => {
   return controllers.get(controller)!;
 };
 
+// Keeps the instance of `handle`, letting go of the one kept before, and hands
+// it the render's options: with no part in the page, no mount does.
+function keep(hold: Hold, handle: Handle) {
+  if (hold.handle?.id !== handle.id) {
+    const releases = chainOf(handle).map(acquire);
+    const entry = live.get(handle.id)!;
+    entry.held = hold.sink;
+    const before = hold.release;
+    hold.release = () => {
+      if (entry.held === hold.sink) {
+        entry.held = undefined;
+      }
+      releases.reverse().forEach((release) => release());
+    };
+    before();
+  }
+  hold.handle = handle;
+  // As a mount's render does, so a change core reports waits for the render to finish.
+  rendering++;
+  try {
+    chainOf(handle).forEach(handOver);
+  } finally {
+    rendering--;
+  }
+}
+
 /**
  * Keeps a component's instance for as long as the component lives, where a
  * part's mount keeps it only while the part is in the page. A controller
  * reaches the instance it is attached to, so a component given one returns
  * this from `subscriptions`, and names the handle its `parts` made with
- * `holding`. Messages go through it while no part is in the page.
+ * `holding`, which decides the instance kept. Messages go through it while no
+ * part is in the page.
  */
 export const held = <Msg>(
   controller: object | undefined,
@@ -310,32 +342,25 @@ export const held = <Msg>(
           idOf(controller),
           controller,
           (_, controls) => {
-            let release = () => {};
-            const hold = (handle: Handle) => {
-              const releases = chainOf(handle).map(acquire);
-              chainOf(handle).forEach(handOver);
-              const entry = live.get(handle.id)!;
-              const sink = (message: unknown) => controls.emit(message as Msg);
-              entry.held = sink;
-              release = () => {
-                if (entry.held === sink) {
-                  entry.held = undefined;
-                }
-                releases.reverse().forEach((release) => release());
-              };
+            const hold: Hold = {
+              handle: undefined,
+              release: () => {},
+              sink: (message) => controls.emit(message as Msg),
             };
-            // Once the render that made the handle is through.
-            controls.enter((controller) => {
-              const handle = rendered.get(controller);
-              if (handle) {
-                hold(handle);
-              } else {
-                waiting.set(controller, hold);
+            holds.set(controller, hold);
+            // A render that came first named the handle. One still to come, as
+            // for a controller another component just gave up, names it then.
+            controls.enter((latest) => {
+              const handle = rendered.get(latest);
+              if (handle && !hold.handle) {
+                keep(hold, handle);
               }
             });
             return () => {
-              waiting.delete(controller);
-              release();
+              if (holds.get(controller) === hold) {
+                holds.delete(controller);
+              }
+              hold.release();
             };
           },
         ),
@@ -347,15 +372,9 @@ export function holding(controller: object | undefined, handle: Handle) {
     return;
   }
   rendered.set(controller, handle);
-  const hold = waiting.get(controller);
-  waiting.delete(controller);
-  const entry = live.get(handle.id);
+  const hold = holds.get(controller);
   if (hold) {
-    hold(handle);
-  } else if (entry?.held && entry.sinks.size === 0) {
-    // No part's mount hands the instance this render's options, so this does.
-    // With no mount there's nothing in the page for a change to reach as it renders.
-    chainOf(handle).forEach(handOver);
+    keep(hold, handle);
   }
 }
 

@@ -160,6 +160,11 @@ test("a spec file whose every test skips for an explained reason may run no test
   expect(problems({ ...covered, counts, exempt, skips: [byRule] })).toEqual([
     "toggle.spec.ts opens a fixture we ship, and ran no test in effect.",
   ]);
+  // Every test skipped for a fixture we don't ship, before it could reach ours.
+  const otherFixture = { ...byRule, fixture: "toggle-cases" };
+  expect(problems({ ...covered, counts, skips: [otherFixture, noFixture] })).toEqual([
+    "toggle.spec.ts opens a fixture we ship, and ran no test in effect.",
+  ]);
 });
 
 test("a test that a spec file for a fixture we ship skips by its own rule is a problem, unless exempt", () => {

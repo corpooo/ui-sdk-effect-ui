@@ -18,7 +18,7 @@ Early, and not published. Both dependencies are pinned to single commits: UI SDK
 
 That is 11 of upstream's 146 fixtures: `toggle`, `toggle-render`, `tabs`, `tabs-render`, `tabs-perf`, `menu`, `menu-cases`, `menu-groups`, `menu-perf`, `menu-render` and `menu-unmount`. The menu's also run with its popup in a container and as a sheet, as upstream runs React's.
 
-Menu takes no `items` yet, so upstream's data menus have no fixture. It has no context trigger, item icon or trigger payload either.
+Menu takes no `items` yet, so upstream's data menus have no fixture. It has no context trigger, item icon or trigger payload either, and no item `onSelect` whose `preventDefault` stops its action.
 
 ## Use
 

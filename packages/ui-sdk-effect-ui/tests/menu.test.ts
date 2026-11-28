@@ -152,10 +152,8 @@ describe("Menu", () => {
   it.effect("a checkbox item without `checked` takes a press itself and tells the parent", () =>
     Effect.gen(function* () {
       const story = yield* Story.make(MenuStory, {});
-      const change = { value: "sidebar", checked: true, reason: "item-press" };
-      story
-        .send(MenuMessage.RequestedChecked({ level: "", ...change }))
-        .emitted(MenuEvents.RequestedChecked(change));
+      const change = { path: [], value: "sidebar", checked: true, reason: "item-press" };
+      story.send(MenuMessage.RequestedChecked(change)).emitted(MenuEvents.RequestedChecked(change));
       const menu = Story.parts(Menu, story.current);
       assert.isTrue(menu.checkboxItemState(sidebar).checked);
       // An item the parent holds shows what the parent passes, whatever was asked of it.
@@ -166,10 +164,8 @@ describe("Menu", () => {
   it.effect("a radio group without `value` takes a choice itself and tells the parent", () =>
     Effect.gen(function* () {
       const story = yield* Story.make(MenuStory, {});
-      const change = { group: "sort", value: "date", reason: "item-press" };
-      story
-        .send(MenuMessage.RequestedValue({ level: "", ...change }))
-        .emitted(MenuEvents.RequestedValue(change));
+      const change = { path: [], group: "sort", value: "date", reason: "item-press" };
+      story.send(MenuMessage.RequestedValue(change)).emitted(MenuEvents.RequestedValue(change));
       const menu = Story.parts(Menu, story.current);
       const checked = (group: MenuRadioGroup) =>
         ["name", "date"].filter((value) => menu.radioItemState({ group, value }).checked);
@@ -177,6 +173,23 @@ describe("Menu", () => {
       // A group the parent holds shows what the parent passes.
       assert.deepStrictEqual(checked(sort({ value: "name" })), ["name"]);
       assert.deepStrictEqual(checked(sort({ value: null })), []);
+    }),
+  );
+
+  it.effect("each menu keeps its own values, and only the ones a press set", () =>
+    Effect.gen(function* () {
+      const story = yield* Story.make(MenuStory, {});
+      const check = { path: [], value: "pinned", checked: true, reason: "item-press" };
+      story.send(MenuMessage.RequestedChecked(check)).emitted(MenuEvents.RequestedChecked(check));
+      const pick = { path: [], group: "sort", value: "date", reason: "item-press" };
+      story.send(MenuMessage.RequestedValue(pick)).emitted(MenuEvents.RequestedValue(pick));
+      const menu = Story.parts(Menu, story.current);
+      assert.isTrue(menu.checkboxItemState({ value: "pinned" }).checked);
+      // A submenu keyed "" is another menu than the one around it.
+      assert.isFalse(menu.sub({ key: "" }).checkboxItemState({ value: "pinned" }).checked);
+      // A name the Model's records inherit, like `constructor`, keeps its seed.
+      const group = { name: "constructor", initialValue: "a" };
+      assert.isTrue(menu.radioItemState({ group, value: "a" }).checked);
     }),
   );
 
