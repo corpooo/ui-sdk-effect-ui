@@ -396,14 +396,24 @@ function attach(node: Element, first: Handle) {
   let part: Part | undefined;
   let leave = () => {};
   let current: Binding | undefined;
-  // Where Effect UI put the element, which it goes back to before Effect UI takes it out.
-  const home = node.parentNode;
-  // Only within one tree: across a shadow root's edge the ids that name and
-  // anchor a popup, like `aria-labelledby`, point at nothing.
+  // Where Effect UI had the element when this mount moved it out, which it
+  // goes back to before Effect UI takes it out. Only an element given a
+  // container ever moves: Effect UI moves elements too, like a kept child's.
+  let home: ParentNode | null = null;
   const place = (into: ParentNode | undefined) => {
-    const parent = into && home && into.getRootNode() === home.getRootNode() ? into : home;
-    if (parent && node.parentNode !== parent) {
-      parent.appendChild(node);
+    const from = home ?? node.parentNode;
+    // Only within one tree: across a shadow root's edge the ids that name and
+    // anchor a popup, like `aria-labelledby`, point at nothing.
+    if (into && from && into.getRootNode() === from.getRootNode()) {
+      if (node.parentNode !== into) {
+        home = from;
+        into.appendChild(node);
+      }
+    } else if (home) {
+      if (node.parentNode !== home) {
+        home.appendChild(node);
+      }
+      home = null;
     }
   };
   // What core showed when the component last rendered or was last told to.

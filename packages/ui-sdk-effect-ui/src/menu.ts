@@ -387,26 +387,36 @@ export const Menu = Html.component({
        */
       readonly sub: (sub: MenuSub) => Level;
     };
-    const withSubs = (instance: Handle<typeof menu>, path: ReadonlyArray<string>): Level => ({
-      ...level(instance, path),
-      sub: ({ key, ...options }) => {
-        const keys = [...path, key];
-        const child: Handle<typeof menu> = handle(
-          p.id("sub", keys.join("-")),
-          menu,
-          {
-            ...defined(options),
-            // Read as the instance is made and as it takes each render's
-            // options, which is once the menu around it has its own.
-            get parent() {
-              return instanceOf(instance).api;
-            },
-          } as MenuOptions,
-          instance,
-        );
-        return withSubs(child, keys);
-      },
-    });
+    const withSubs = (instance: Handle<typeof menu>, path: ReadonlyArray<string>): Level => {
+      // One handle per submenu and render, however often the view asks for its parts.
+      const subs = new Map<string, Level>();
+      return {
+        ...level(instance, path),
+        sub: ({ key, ...options }) => {
+          const made = subs.get(key);
+          if (made) {
+            return made;
+          }
+          const keys = [...path, key];
+          const child: Handle<typeof menu> = handle(
+            p.id("sub", keys.join("/")),
+            menu,
+            {
+              ...defined(options),
+              // Read as the instance is made and as it takes each render's
+              // options, which is once the menu around it has its own.
+              get parent() {
+                return instanceOf(instance).api;
+              },
+            } as MenuOptions,
+            instance,
+          );
+          const parts = withSubs(child, keys);
+          subs.set(key, parts);
+          return parts;
+        },
+      };
+    };
 
     return {
       /** Whether the menu is open, as this render shows it. */
