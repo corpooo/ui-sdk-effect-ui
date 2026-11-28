@@ -14,8 +14,11 @@ Early, and not published. Both dependencies are pinned to single commits: UI SDK
 | Button              | `@corpooo/ui-sdk-effect-ui/button`    | pass, client-rendered and hydrated |
 | Separator           | `@corpooo/ui-sdk-effect-ui/separator` | pass, client-rendered and hydrated |
 | Tabs                | `@corpooo/ui-sdk-effect-ui/tabs`      | pass, client-rendered and hydrated |
+| Menu                | `@corpooo/ui-sdk-effect-ui/menu`      | pass, client-rendered and hydrated |
 
-That is 5 of upstream's 146 fixtures: `toggle`, `toggle-render`, `tabs`, `tabs-render` and `tabs-perf`.
+That is 11 of upstream's 146 fixtures: `toggle`, `toggle-render`, `tabs`, `tabs-render`, `tabs-perf`, `menu`, `menu-cases`, `menu-groups`, `menu-perf`, `menu-render` and `menu-unmount`. The menu's also run with its popup in a container and as a sheet, as upstream runs React's.
+
+Menu takes no `items` yet, so upstream's data menus have no fixture. It has no context trigger, item icon or trigger payload either.
 
 ## Use
 
@@ -57,6 +60,47 @@ Tabs(h, {
       ),
 });
 ```
+
+A menu has no element of its own, and a view is one element, so wrap its trigger and content. `menu.content` gives nothing while the menu is closed. `menu.sub` gives a submenu's parts, the same ones.
+
+```ts
+import { Menu } from "@corpooo/ui-sdk-effect-ui/menu";
+
+Menu(h, {
+  onEmit: {
+    // An item that runs says which. The menu has already closed.
+    Picked: ({ value }) => EditorMessage.PickedFileAction({ value }),
+    RequestedOpen: () => undefined,
+    RequestedChecked: () => undefined,
+    RequestedValue: () => undefined,
+  },
+  view: (menu) => {
+    const share = menu.sub({ key: "share" });
+    return h.div
+      .style({ display: "contents" })
+      .children(
+        menu.trigger(h.button).children("File"),
+        menu
+          .content(h.div.key("content").class("popup"))
+          ?.children(
+            menu
+              .item(h.div, { value: "new", shortcut: "mod+n" })
+              .children("New", menu.shortcut(h.span, "mod+n")),
+            menu.separator(h.div),
+            menu
+              .checkboxItem(h.div, { value: "sidebar", initialChecked: true })
+              .children("Show sidebar"),
+            share.trigger(h.div).children("Share"),
+            share
+              .content(h.div.key("share").class("popup"))
+              ?.children(share.item(h.div, { value: "email" }).children("Email")),
+          ),
+      );
+  },
+});
+```
+
+Pass `open` to hold whether it's open, `checked` to a checkbox item and `value` to a radio group to hold theirs. Each then only asks, with `RequestedOpen`, `RequestedChecked` and `RequestedValue`.
 
 ## Develop
 
