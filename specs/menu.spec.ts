@@ -210,6 +210,16 @@ for (const owner of ["Kept", "Held"]) {
     await expect(menuNamed(page, "Commands")).toHaveAttribute("data-presentation", "sheet");
   });
 
+  test(`${owner}: a menu that takes the place of the one holding the controller opens with it`, async ({
+    page,
+    open,
+  }) => {
+    await open("own-menu", owner === "Held" ? { controller: "held" } : {});
+    await buttonNamed(page, "Replace commands").click();
+    await buttonNamed(page, "Open from outside the app").click();
+    await expect(menuNamed(page, "Commands")).toBeVisible();
+  });
+
   test(`${owner}: two menus that swap controllers each open with the other's`, async ({
     page,
     open,

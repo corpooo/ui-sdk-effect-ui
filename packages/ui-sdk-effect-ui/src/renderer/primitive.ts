@@ -377,10 +377,13 @@ export function holding(controller: object | undefined, handle: Handle) {
   }
   const own = controlled(controller);
   const { hold } = own;
-  if (!hold) {
-    own.unheld = handle;
-  } else if (!hold.handle || hold.handle.id === handle.id) {
+  if (hold && (!hold.handle || hold.handle.id === handle.id)) {
+    own.unheld = undefined;
     keep(hold, handle);
+  } else {
+    // No hold, or another component's, as for a menu that replaces the one
+    // holding the controller: the hold that starts next takes this render.
+    own.unheld = handle;
   }
 }
 

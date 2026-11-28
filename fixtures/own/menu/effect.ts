@@ -33,6 +33,7 @@ const FixtureMessage = UiSchema.TaggedEnum({
   RequestedOpenController: { open: Schema.Boolean },
   ClickedSheetCommands: {},
   ClickedSwapControllers: {},
+  ClickedReplaceCommands: {},
   ClickedOpenWithOtherController: {},
   RequestedCheckedNested: { path: Schema.Array(Schema.String), value: Schema.String },
 });
@@ -70,6 +71,8 @@ const Fixture = Html.component({
     sheet: Schema.Boolean,
     // Whether the two commands menus swapped controllers.
     swapped: Schema.Boolean,
+    // Whether another commands menu, keyed apart, took the place of the first.
+    replaced: Schema.Boolean,
   }),
   message: FixtureMessage,
 }).make({
@@ -82,6 +85,7 @@ const Fixture = Html.component({
     controlled: false,
     sheet: false,
     swapped: false,
+    replaced: false,
   }),
   update: ($, message) =>
     FixtureMessage.match(message, {
@@ -102,6 +106,7 @@ const Fixture = Html.component({
       RequestedOpenController: ({ open }) => $.evolve({ controlled: open }),
       ClickedSheetCommands: () => $.evolve({ sheet: true }),
       ClickedSwapControllers: () => $.evolve({ swapped: true }),
+      ClickedReplaceCommands: () => $.evolve({ replaced: true }),
       ClickedOpenWithOtherController: () => $.run(OpenOtherMenu.make({}).pipe(Command.asNoop)),
     }),
   view: (h, model) =>
@@ -206,7 +211,7 @@ const Fixture = Html.component({
       h.button.on("click", () => FixtureMessage.ClickedShowContent()).children("Show content"),
       // No trigger, and no content while it's closed: every part is absent until the controller opens it.
       Menu(h, {
-        key: "controller",
+        key: model.replaced ? "controller-replaced" : "controller",
         props: {
           controller: model.swapped ? otherController : controller,
           ...(controllerHeld && { open: model.controlled }),
@@ -253,6 +258,9 @@ const Fixture = Html.component({
         .on("click", () => FixtureMessage.ClickedSwapControllers())
         .children("Swap controllers"),
       h.button
+        .on("click", () => FixtureMessage.ClickedReplaceCommands())
+        .children("Replace commands"),
+      h.button
         .on("click", () => FixtureMessage.ClickedSheetCommands())
         .children("Commands as a sheet"),
       sheetContainer &&
@@ -280,6 +288,11 @@ function mount(root: HTMLElement) {
     root.append(sheetContainer);
   }
   Layer.launch(BrowserHost.mount(Fixture, {}, root)).pipe(Effect.runFork);
+  // Opens the menu with no render of the app before it, as a shortcut would.
+  const outside = document.createElement("button");
+  outside.textContent = "Open from outside the app";
+  outside.addEventListener("click", () => void controller.open({ focus: "first" }));
+  root.after(outside);
 }
 
 export { mount };
