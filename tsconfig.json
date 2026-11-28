@@ -18,6 +18,7 @@
       "@ui-sdk/core": ["./upstream/ui/packages/core/dist/index.d.ts"],
       "@ui-sdk/core/renderer": ["./upstream/ui/packages/core/dist/renderer.d.ts"],
       "@ui-sdk/core/button": ["./upstream/ui/packages/core/dist/components/button/button.d.ts"],
+      "@ui-sdk/core/menu": ["./upstream/ui/packages/core/dist/components/menu/menu.d.ts"],
       "@ui-sdk/core/separator": [
         "./upstream/ui/packages/core/dist/components/separator/separator.d.ts"
       ],
