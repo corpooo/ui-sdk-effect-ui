@@ -575,8 +575,15 @@ const isBinding = (u: unknown): u is Binding => typeof u === "object" && u !== n
 
 const BindPart = Mount.make(
   "BindPart",
-  // Compared by identity, so every render reaches the mount.
-  { args: { binding: Schema.declare(isBinding, { expected: "Binding" }) } },
+  // Compared by identity, so every render reaches the mount, and the
+  // comparison never walks a handle's options, like a submenu's `parent` getter.
+  {
+    args: {
+      binding: Schema.declare(isBinding, { expected: "Binding" }).pipe(
+        Schema.overrideToEquivalence(() => (a, b) => a === b),
+      ),
+    },
+  },
   (node: unknown, { binding }, changes) =>
     Effect.gen(function* () {
       if (!(node instanceof Element)) {
