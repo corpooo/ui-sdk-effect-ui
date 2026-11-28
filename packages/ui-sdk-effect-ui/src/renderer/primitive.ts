@@ -277,6 +277,20 @@ function acquire(handle: Handle) {
 // that holds its instance starts from. Only in a browser, as `live` is.
 const rendered = new WeakMap<object, Handle>();
 
+// A subscription that started before its component rendered with that
+// controller, as when the parent swaps controllers, waiting for that render.
+const waiting = new WeakMap<object, (handle: Handle) => void>();
+
+// A number for each controller, as a subscription's dependencies take only primitives.
+const controllers = new WeakMap<object, number>();
+let numbered = 0;
+const idOf = (controller: object) => {
+  if (!controllers.has(controller)) {
+    controllers.set(controller, numbered++);
+  }
+  return controllers.get(controller)!;
+};
+
 /**
  * Keeps a component's instance for as long as the component lives, where a
  * part's mount keeps it only while the part is in the page. A controller
@@ -290,33 +304,58 @@ export const held = <Msg>(
   controller === undefined
     ? []
     : [
-        Subscription.direct<object, Msg>("HoldInstance", undefined, controller, (_, controls) => {
-          let release = () => {};
-          // Once the render that made the handle is through.
-          controls.enter((controller) => {
-            const handle = rendered.get(controller);
-            if (!handle) {
-              return;
-            }
-            const releases = chainOf(handle).map(acquire);
-            const entry = live.get(handle.id)!;
-            const sink = (message: unknown) => controls.emit(message as Msg);
-            entry.held = sink;
-            release = () => {
-              if (entry.held === sink) {
-                entry.held = undefined;
-              }
-              releases.reverse().forEach((release) => release());
+        // Started again for another controller, which the instance then takes.
+        Subscription.direct<object, Msg>(
+          "HoldInstance",
+          idOf(controller),
+          controller,
+          (_, controls) => {
+            let release = () => {};
+            const hold = (handle: Handle) => {
+              const releases = chainOf(handle).map(acquire);
+              chainOf(handle).forEach(handOver);
+              const entry = live.get(handle.id)!;
+              const sink = (message: unknown) => controls.emit(message as Msg);
+              entry.held = sink;
+              release = () => {
+                if (entry.held === sink) {
+                  entry.held = undefined;
+                }
+                releases.reverse().forEach((release) => release());
+              };
             };
-          });
-          return () => release();
-        }),
+            // Once the render that made the handle is through.
+            controls.enter((controller) => {
+              const handle = rendered.get(controller);
+              if (handle) {
+                hold(handle);
+              } else {
+                waiting.set(controller, hold);
+              }
+            });
+            return () => {
+              waiting.delete(controller);
+              release();
+            };
+          },
+        ),
       ];
 
 /** Names the handle this render made for the component `controller` drives. See `held`. */
 export function holding(controller: object | undefined, handle: Handle) {
-  if (controller !== undefined && typeof document !== "undefined") {
-    rendered.set(controller, handle);
+  if (controller === undefined || typeof document === "undefined") {
+    return;
+  }
+  rendered.set(controller, handle);
+  const hold = waiting.get(controller);
+  waiting.delete(controller);
+  const entry = live.get(handle.id);
+  if (hold) {
+    hold(handle);
+  } else if (entry?.held && entry.sinks.size === 0) {
+    // No part's mount hands the instance this render's options, so this does.
+    // With no mount there's nothing in the page for a change to reach as it renders.
+    chainOf(handle).forEach(handOver);
   }
 }
 

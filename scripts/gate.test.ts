@@ -42,6 +42,7 @@ const covered = {
   ownShipped: { effect: ["own-tabs-keys"], "effect-ssr": [] },
   opened: ["toggle", "own-tabs-keys"],
   skips: [],
+  passes: [],
   baseline: { effect: ["toggle", "own-tabs-keys"], "effect-ssr": ["toggle"] },
   exempt: {},
 };
@@ -183,6 +184,29 @@ test("a test that a spec file for a fixture we ship skips by its own rule is a p
   // A spec file that opens no fixture we ship loads a page for another adapter, and skips as it should.
   const elsewhere = { project: "effect", file: "menu.spec.ts", title: "menu.spec.ts › opens" };
   expect(problems({ ...skipped, skips: [elsewhere] })).toEqual([]);
+});
+
+test("an exempt test that runs elsewhere must pass there, and its exemption holds only outside", () => {
+  const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
+  const title = "toggle.spec.ts › controlled › closing returns focus";
+  const skip = (project: string) => ({ project, file: "toggle.spec.ts", title });
+  const exempt = {
+    "toggle.spec.ts › controlled": { why: "React only.", runsIn: ["react-effect"] },
+  };
+  const input = {
+    ...covered,
+    projects: ["effect", "react-effect"],
+    expected: { effect: ["toggle.spec.ts"], "react-effect": ["toggle.spec.ts"] },
+    counts: new Map([...counts, ["react-effect", counts.get("effect")!]]),
+    exempt,
+    skips: [skip("effect")],
+  };
+  expect(problems({ ...input, passes: [{ project: "react-effect", title }] })).toEqual([]);
+  // It skipped there too, so it ran nowhere.
+  expect(problems({ ...input, skips: [skip("effect"), skip("react-effect")] })).toEqual([
+    `${title} skipped in react-effect by its own rule. Exempt it in coverage-baseline.json, with why.`,
+    "coverage-baseline.json says toggle.spec.ts › controlled runs in react-effect, and no test of it passed there.",
+  ]);
 });
 
 test("a run that names no spec files for a project is a problem", () => {

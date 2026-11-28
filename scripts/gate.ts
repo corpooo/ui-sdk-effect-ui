@@ -101,6 +101,23 @@ export const skips = (report: Report): Skip[] =>
       return { project: test.projectName, file, title, ...(fixture && { fixture }) };
     });
 
+/** Each test that passed, by project and title path. */
+export const passes = (report: Report) =>
+  testsOf(report)
+    .filter(({ test }) => outcome(test) === "passed")
+    .map(({ title, test }) => ({ project: test.projectName, title }));
+
+/**
+ * Why tests skip for us by their spec file's own rule. A test that runs for
+ * us elsewhere names the projects it runs in, where the exemption doesn't
+ * hold and the test must pass, as the portal project runs a portal's tests.
+ */
+export type Exemption = string | { readonly why: string; readonly runsIn: string[] };
+
+/** Why the tests skip, and the projects they run in. */
+export const exemptionOf = (exemption: Exemption) =>
+  typeof exemption === "string" ? { why: exemption, runsIn: [] } : exemption;
+
 /**
  * Why the run doesn't cover what we ship, or nothing when it does.
  *
@@ -131,10 +148,12 @@ export function problems(input: {
   opened: string[];
   /** The tests that skipped. */
   skips: Skip[];
+  /** The tests that passed. */
+  passes: { project: string; title: string }[];
   /** The fixtures each framework must keep shipping. */
   baseline: Record<string, string[]>;
-  /** The tests that skip for us by their spec file's own rule, each with why: a test, or the describe block or spec file it is in, by title path. */
-  exempt: Record<string, string>;
+  /** The tests that skip for us by their spec file's own rule: a test, or the describe block or spec file it is in, by title path. */
+  exempt: Record<string, Exemption>;
 }) {
   const found: string[] = [];
   if (input.interrupted) {
@@ -150,15 +169,18 @@ export function problems(input: {
     ...(input.ownShipped[framework] ?? []),
   ];
   const allOwn = new Set(Object.values(input.ownShipped).flat());
-  const exemption = (title: string) =>
-    Object.keys(input.exempt).find((key) => `${title} › `.startsWith(`${key} › `));
+  const runsIn = (key: string) => exemptionOf(input.exempt[key]!).runsIn;
+  const under = (title: string, key: string) => `${title} › `.startsWith(`${key} › `);
+  // The exemption that covers a test in a project, which it doesn't in a project it runs in.
+  const exemption = (title: string, project: string) =>
+    Object.keys(input.exempt).find((key) => under(title, key) && !runsIn(key).includes(project));
   // A skip that needs no fixing: for want of a fixture we don't ship for the
   // project's framework, or by the spec file's own rule, which the baseline exempts.
   const explained = ({ project, title, fixture }: Skip) =>
     fixture
       ? !all(input.frameworkOf[project] ?? project).includes(fixture) &&
         !(fixture.startsWith("own-") && !allOwn.has(fixture))
-      : exemption(title) !== undefined;
+      : exemption(title, project) !== undefined;
   for (const project of input.projects) {
     const files = input.expected[project] ?? [];
     // No list is a report the run never finished writing, or a project with no fixture.
@@ -176,7 +198,7 @@ export function problems(input: {
         count.skipped > 0 &&
         skipped.length === count.skipped &&
         skipped.every(explained);
-      if (!ran(count) && !(file in input.exempt) && !allExplained) {
+      if (!ran(count) && !allExplained) {
         found.push(`${file} opens a fixture we ship, and ran no test in ${project}.`);
       }
     }
@@ -213,7 +235,7 @@ export function problems(input: {
         found.push(`${file} opens ${fixture}, and we have no fixture of that name.`);
       }
     } else if (input.expected[project]?.includes(file)) {
-      const key = exemption(title);
+      const key = exemption(title, project);
       if (key) {
         used.add(key);
       } else {
@@ -228,6 +250,14 @@ export function problems(input: {
       found.push(
         `coverage-baseline.json exempts ${key}, which skipped no test. Remove its exemption.`,
       );
+    }
+    // A test that runs only elsewhere runs nowhere once it skips there too.
+    for (const project of runsIn(key)) {
+      if (!input.passes.some((pass) => pass.project === project && under(pass.title, key))) {
+        found.push(
+          `coverage-baseline.json says ${key} runs in ${project}, and no test of it passed there.`,
+        );
+      }
     }
   }
   // Both ways: a fixture it names that went, and one it doesn't name, which nothing would miss.

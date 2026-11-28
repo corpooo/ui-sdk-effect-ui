@@ -145,6 +145,40 @@ for (const owner of ["Kept", "Held"]) {
     });
   });
 
+  test(`${owner}: the same value in a menu and its submenu is two items`, async ({
+    page,
+    open,
+  }) => {
+    await open("own-menu", options);
+    await buttonNamed(page, "Nested").press("Enter");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowRight");
+    await expect(itemNamed(page, "Email")).toBeFocused();
+    const inShare = page.getByRole("menuitemcheckbox", { name: "Pinned in Share" });
+    await inShare.focus();
+    await page.keyboard.press("Space");
+    await expect(inShare).toHaveAttribute("aria-checked", "true");
+    await expect(
+      page.getByRole("menuitemcheckbox", { name: "Pinned", exact: true }),
+    ).toHaveAttribute("aria-checked", "false");
+  });
+
+  test(`${owner}: a submenu key with a slash names another submenu than the path it spells`, async ({
+    page,
+    open,
+  }) => {
+    await open("own-menu", options);
+    await buttonNamed(page, "Nested").press("Enter");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowRight");
+    await expect(itemNamed(page, "Email")).toBeFocused();
+    const ids = await Promise.all(
+      ["More", "Flat"].map((name) => itemNamed(page, name).getAttribute("id")),
+    );
+    expect(ids[0]).toBeTruthy();
+    expect(ids[0]).not.toBe(ids[1]);
+  });
+
   test(`${owner}: \`controller.open()\` opens a menu with every part absent`, async ({
     page,
     open,
@@ -163,7 +197,29 @@ for (const owner of ["Kept", "Held"]) {
     await opener.click();
     await expect(itemNamed(page, "Run")).toBeFocused();
   });
+
+  test(`${owner}: a menu with every part absent takes the props its parent changes`, async ({
+    page,
+    open,
+  }) => {
+    await open("own-menu", owner === "Held" ? { controller: "held" } : {});
+    await buttonNamed(page, "Commands as a sheet").click();
+    await buttonNamed(page, "Open with controller").click();
+    await expect(menuNamed(page, "Commands")).toHaveAttribute("data-presentation", "sheet");
+  });
 }
+
+test.describe("on a touch phone", () => {
+  test.use({ viewport: { width: 390, height: 700 }, hasTouch: true, isMobile: true });
+
+  test("a menu kept in a container turns into a sheet that shows", async ({ page, open }) => {
+    await open("own-menu", { sheet: "" });
+    await buttonNamed(page, "Sheet").press("Enter");
+    const sheet = menuNamed(page, "Sheet");
+    await expect(sheet).toHaveAttribute("data-presentation", "sheet");
+    await expect(sheet).toBeVisible();
+  });
+});
 
 test("focus returns to the trigger when an open menu's parts unmount", async ({ page, open }) => {
   await open("own-menu");

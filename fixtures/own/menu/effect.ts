@@ -1,6 +1,7 @@
 // Menus for what upstream's menu fixtures don't draw: a parent that refuses
 // to open one, nested menus closed in one task, content that leaves while
-// the menu is open, and a menu with no part in the page. `?refuse` has the
+// the menu is open, a menu with no part in the page, and nested menus with
+// the same item value or key path at two levels. `?refuse` has the
 // parent keep `open` false, `?nested=held` and `?controller=held` have it
 // hold `open` for those menus too. specs/menu.spec.ts reads the page.
 import { createMenuController, Menu } from "@corpooo/ui-sdk-effect-ui/menu";
@@ -14,6 +15,8 @@ const refuses = (open: boolean) =>
   params.has("refuse") && (params.get("refuse") !== "close" || !open);
 const nestedHeld = params.get("nested") === "held";
 const controllerHeld = params.get("controller") === "held";
+// `?sheet` adds a menu in a container that a touch phone shows as a sheet.
+const sheetContainer = params.has("sheet") ? document.createElement("div") : undefined;
 
 const controller = createMenuController();
 
@@ -26,6 +29,7 @@ const FixtureMessage = UiSchema.TaggedEnum({
   ClickedShowContent: {},
   ClickedOpenWithController: {},
   RequestedOpenController: { open: Schema.Boolean },
+  ClickedSheetCommands: {},
 });
 
 // A controller opens the menu from outside it, which is work for a Command.
@@ -51,10 +55,18 @@ const Fixture = Html.component({
     nested: Schema.Boolean,
     hidden: Schema.Boolean,
     controlled: Schema.Boolean,
+    sheet: Schema.Boolean,
   }),
   message: FixtureMessage,
 }).make({
-  init: () => ({ held: false, requests: [], nested: false, hidden: false, controlled: false }),
+  init: () => ({
+    held: false,
+    requests: [],
+    nested: false,
+    hidden: false,
+    controlled: false,
+    sheet: false,
+  }),
   update: ($, message) =>
     FixtureMessage.match(message, {
       // With `?refuse` the parent keeps `open` as it is, which is how it says no.
@@ -70,6 +82,7 @@ const Fixture = Html.component({
       ClickedShowContent: () => $.evolve({ hidden: false }),
       ClickedOpenWithController: () => $.run(OpenMenu.make({}).pipe(Command.asNoop)),
       RequestedOpenController: ({ open }) => $.evolve({ controlled: open }),
+      ClickedSheetCommands: () => $.evolve({ sheet: true }),
     }),
   view: (h, model) =>
     h.div.class("fixture").children(
@@ -115,6 +128,8 @@ const Fixture = Html.component({
         view: (menu) => {
           const share = menu.sub({ key: "share" });
           const more = share.sub({ key: "more" });
+          // The key path "share/more" spelled as one key: another submenu than `more`.
+          const flat = menu.sub({ key: "share/more" });
           return h.div
             .style({ display: "contents" })
             .children(
@@ -134,7 +149,12 @@ const Fixture = Html.component({
                         ?.children(
                           more.item(h.div.class("item"), { value: "embed" }).children("Embed"),
                         ),
+                      share
+                        .checkboxItem(h.div.class("item"), { value: "pinned" })
+                        .children("Pinned in Share"),
                     ),
+                  menu.checkboxItem(h.div.class("item"), { value: "pinned" }).children("Pinned"),
+                  flat.trigger(h.div.class("item")).children("Flat"),
                 ),
             );
         },
@@ -164,7 +184,11 @@ const Fixture = Html.component({
       // No trigger, and no content while it's closed: every part is absent until the controller opens it.
       Menu(h, {
         key: "controller",
-        props: { controller, ...(controllerHeld && { open: model.controlled }) },
+        props: {
+          controller,
+          ...(controllerHeld && { open: model.controlled }),
+          ...(model.sheet && { presentation: "sheet" as const }),
+        },
         onEmit: {
           ...ignored,
           RequestedOpen: ({ open }) =>
@@ -185,11 +209,33 @@ const Fixture = Html.component({
       h.button
         .on("click", () => FixtureMessage.ClickedOpenWithController())
         .children("Open with controller"),
+      h.button
+        .on("click", () => FixtureMessage.ClickedSheetCommands())
+        .children("Commands as a sheet"),
+      sheetContainer &&
+        Menu(h, {
+          key: "sheet",
+          props: { container: sheetContainer, presentation: "auto" },
+          onEmit: ignored,
+          view: (menu) =>
+            h.div
+              .style({ display: "contents" })
+              .children(
+                menu.trigger(h.button).children("Sheet"),
+                menu
+                  .content(h.div.key("content").class("popup"), { keepMounted: true })
+                  ?.children(menu.item(h.div.class("item"), { value: "alpha" }).children("Alpha")),
+              ),
+        }),
       h.button("After"),
     ),
 });
 
 function mount(root: HTMLElement) {
+  // Inside the element the app is mounted on, where Effect UI hears events.
+  if (sheetContainer) {
+    root.append(sheetContainer);
+  }
   Layer.launch(BrowserHost.mount(Fixture, {}, root)).pipe(Effect.runFork);
 }
 

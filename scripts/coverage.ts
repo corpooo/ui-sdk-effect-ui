@@ -10,7 +10,18 @@
 // unless it holds only `test.fixme`s.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { interrupted, problems, ran, skips, tally, type Counts, type Report } from "./gate.ts";
+import {
+  exemptionOf,
+  interrupted,
+  passes,
+  problems,
+  ran,
+  skips,
+  tally,
+  type Counts,
+  type Exemption,
+  type Report,
+} from "./gate.ts";
 import { opened, owned, ownShipped, shipped } from "./overlay.ts";
 import {
   baseline as baselineFile,
@@ -27,7 +38,7 @@ if (!existsSync(reportFile)) {
 const report = JSON.parse(readFileSync(reportFile, "utf8")) as Report;
 const { fixtures: baseline, exempt } = JSON.parse(readFileSync(baselineFile, "utf8")) as {
   fixtures: Record<string, string[]>;
-  exempt: Record<string, string>;
+  exempt: Record<string, Exemption>;
 };
 
 // A fixture every adapter can have is one React has, as `<name>/react.tsx`.
@@ -78,8 +89,9 @@ for (const project of Object.keys(ownProjects)) {
   }
 }
 
-for (const [title, why] of Object.entries(exempt)) {
-  console.log(`\nExempt: ${title}. ${why}`);
+for (const [title, exemption] of Object.entries(exempt)) {
+  const { why, runsIn } = exemptionOf(exemption);
+  console.log(`\nExempt: ${title}. ${why}${runsIn.length ? ` Runs in ${runsIn.join(", ")}.` : ""}`);
 }
 
 const found = problems({
@@ -95,6 +107,7 @@ const found = problems({
   ownShipped: ourOwn,
   opened: opened(),
   skips: skips(report),
+  passes: passes(report),
   baseline,
   exempt,
 });

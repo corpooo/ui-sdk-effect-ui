@@ -73,10 +73,13 @@ export const MenuProps = Schema.Struct({
 export const MenuModel = Schema.Struct({
   /** Whether it's open, while the props leave `open` out. */
   open: Schema.Boolean,
-  /** Each checkbox item a press has changed, by its value. An item given `checked` shows that instead. */
-  checked: Schema.Record(Schema.String, Schema.Boolean),
-  /** Each radio group a press has changed, by its name. A group given `value` shows that instead. */
-  values: Schema.Record(Schema.String, Schema.String),
+  /**
+   * Each checkbox item a press has changed, by the menu it is in, as `level`
+   * names it, then by its value. An item given `checked` shows that instead.
+   */
+  checked: Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Boolean)),
+  /** Each radio group a press has changed, by the menu it is in, then by its name. A group given `value` shows that instead. */
+  values: Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.String)),
   /** Counts core's own changes, each of which renders again. */
   revision: Schema.Number,
 });
@@ -86,10 +89,20 @@ export const MenuMessage = UiSchema.TaggedEnum({
   RequestedOpen: { open: Schema.Boolean, reason: Reason },
   /** An item with a value ran, in the menu or one of its submenus. */
   Picked: { value: Schema.String },
-  /** Core asked to check or uncheck a checkbox item. */
-  RequestedChecked: { value: Schema.String, checked: Schema.Boolean, reason: Reason },
-  /** Core asked for another item of a radio group. */
-  RequestedValue: { group: Schema.String, value: Schema.String, reason: Reason },
+  /** Core asked to check or uncheck a checkbox item of the menu `level` names. */
+  RequestedChecked: {
+    level: Schema.String,
+    value: Schema.String,
+    checked: Schema.Boolean,
+    reason: Reason,
+  },
+  /** Core asked for another item of a radio group of the menu `level` names. */
+  RequestedValue: {
+    level: Schema.String,
+    group: Schema.String,
+    value: Schema.String,
+    reason: Reason,
+  },
   /** Core changed what a part shows on its own, like the highlight, or content that finished leaving. */
   ChangedPart: {},
 });
@@ -155,15 +168,18 @@ export type MenuSub = Pick<MenuOptions, "loop" | "delay"> & {
   readonly key: string;
 };
 
+/** Names a menu by the keys of the submenus down to it, `""` for the menu itself. A key may hold a `/`. */
+const levelOf = (keys: ReadonlyArray<string>) => keys.map(encodeURIComponent).join("/");
+
 /** Whether an indicator stays in the page while its item is unchecked. */
 type Indicator = { readonly keepMounted?: boolean };
 
-// A `div` with `attributes` around the element a part is applied to. No message goes through it.
+// An element with `attributes` around the element a part is applied to. No message goes through it.
 const inside =
-  (attributes: Record<string, string | undefined>) =>
+  (attributes: Record<string, string | undefined>, tag: "div" | "span" = "div") =>
   (node: unknown): View.Element<never> =>
     View.build(
-      (Html.tags["div"] as unknown as View.ElementBuilder<never, never, unknown, unknown>).attrs(
+      (Html.tags[tag] as unknown as View.ElementBuilder<never, never, unknown, unknown>).attrs(
         attributes,
       ),
       [node as View.Element<never>],
@@ -197,14 +213,20 @@ export const Menu = Html.component({
           MenuEvents.RequestedOpen(request),
         ),
       Picked: (picked) => $.emit(MenuEvents.Picked(picked)),
-      RequestedChecked: (request) =>
-        $.evolve({ checked: (checked) => ({ ...checked, [request.value]: request.checked }) }).emit(
-          MenuEvents.RequestedChecked(request),
-        ),
-      RequestedValue: (request) =>
-        $.evolve({ values: (values) => ({ ...values, [request.group]: request.value }) }).emit(
-          MenuEvents.RequestedValue(request),
-        ),
+      RequestedChecked: ({ level, ...request }) =>
+        $.evolve({
+          checked: (checked) => ({
+            ...checked,
+            [level]: { ...checked[level], [request.value]: request.checked },
+          }),
+        }).emit(MenuEvents.RequestedChecked(request)),
+      RequestedValue: ({ level, ...request }) =>
+        $.evolve({
+          values: (values) => ({
+            ...values,
+            [level]: { ...values[level], [request.group]: request.value },
+          }),
+        }).emit(MenuEvents.RequestedValue(request)),
       ChangedPart: () => $.evolve({ revision: (count) => count + 1 }),
     }),
   // The instance lives as long as the menu does, so a controller reaches it with no part in the page.
@@ -221,42 +243,48 @@ export const Menu = Html.component({
       onAction: (value) => {
         emit(root, MenuMessage.Picked({ value }));
       },
-      // The menu's own callbacks hear every item of it and its submenus.
-      onCheckedChange: (checked, details) =>
-        emit(
-          root,
-          MenuMessage.RequestedChecked({ value: details.value, checked, reason: details.reason }),
-        ),
-      onValueChange: (value, details) =>
-        emit(
-          root,
-          MenuMessage.RequestedValue({ group: details.group, value, reason: details.reason }),
-        ),
     });
 
     holding(p.props.controller, root);
 
-    const groupProps = ({ name, value, initialValue }: MenuRadioGroup) => ({
-      id: name,
-      name,
-      ...(value === undefined
-        ? defined({ defaultValue: model.values[name] ?? initialValue })
-        : { value }),
-    });
-    const checkboxProps = ({ checked, initialChecked, ...props }: MenuCheckboxItem) => ({
-      ...defined(props),
-      ...(checked === undefined
-        ? defined({ defaultChecked: model.checked[props.value] ?? initialChecked })
-        : { checked }),
-    });
-    const radioProps = ({ group, ...props }: MenuRadioItem) => ({
-      ...defined(props),
-      group: group.name,
-    });
-
     // The parts of one menu: the root, or a submenu, whose instance reads the menu around it.
     const level = (instance: Handle<typeof menu>, path: ReadonlyArray<string>) => {
       const nested = path.length > 0;
+      // Each menu keeps its own items' values, so the same value in two of them is two items.
+      // The item's and the group's own callbacks tell which menu they're in, where the root's would hear every menu's.
+      const at = levelOf(path);
+      const groupProps = ({ name, value, initialValue }: MenuRadioGroup) => ({
+        id: name,
+        name,
+        ...(value === undefined
+          ? defined({ defaultValue: model.values[at]?.[name] ?? initialValue })
+          : { value }),
+        onValueChange: (value: string, details: { reason: string }) =>
+          emit(
+            root,
+            MenuMessage.RequestedValue({ level: at, group: name, value, reason: details.reason }),
+          ),
+      });
+      const checkboxProps = ({ checked, initialChecked, ...props }: MenuCheckboxItem) => ({
+        ...defined(props),
+        ...(checked === undefined
+          ? defined({ defaultChecked: model.checked[at]?.[props.value] ?? initialChecked })
+          : { checked }),
+        onCheckedChange: (checked: boolean, details: { reason: string }) =>
+          emit(
+            root,
+            MenuMessage.RequestedChecked({
+              level: at,
+              value: props.value,
+              checked,
+              reason: details.reason,
+            }),
+          ),
+      });
+      const radioProps = ({ group, ...props }: MenuRadioItem) => ({
+        ...defined(props),
+        group: group.name,
+      });
       const item = (props: MenuItem) => shown(instance, "item", defined(props));
       const checkboxItem = (item: MenuCheckboxItem) =>
         shown(instance, "checkbox-item", checkboxProps(item), { feature: menuCheckable });
@@ -275,7 +303,9 @@ export const Menu = Html.component({
           return popup.forward(inside(defined(sheet.attrs)));
         }
         // The element that stays where Effect UI put it, while the popup is in its container.
-        return into ? popup.forward(inside({ style: "display: contents" })) : popup;
+        // Not a `div`, which Effect UI would make a sheet's viewport of, with
+        // the popup's mount in it, which then never shows the sheet.
+        return into ? popup.forward(inside({ style: "display: contents" }, "span")) : popup;
       });
       const indicator = p.part((builder, indicator: Shown<typeof menu, "item-indicator">) =>
         drawn(builder, indicator, changed),
@@ -399,7 +429,7 @@ export const Menu = Html.component({
           }
           const keys = [...path, key];
           const child: Handle<typeof menu> = handle(
-            p.id("sub", keys.join("/")),
+            p.id("sub", levelOf(keys)),
             menu,
             {
               ...defined(options),

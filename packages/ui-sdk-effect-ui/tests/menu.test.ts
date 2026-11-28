@@ -153,7 +153,9 @@ describe("Menu", () => {
     Effect.gen(function* () {
       const story = yield* Story.make(MenuStory, {});
       const change = { value: "sidebar", checked: true, reason: "item-press" };
-      story.send(MenuMessage.RequestedChecked(change)).emitted(MenuEvents.RequestedChecked(change));
+      story
+        .send(MenuMessage.RequestedChecked({ level: "", ...change }))
+        .emitted(MenuEvents.RequestedChecked(change));
       const menu = Story.parts(Menu, story.current);
       assert.isTrue(menu.checkboxItemState(sidebar).checked);
       // An item the parent holds shows what the parent passes, whatever was asked of it.
@@ -165,7 +167,9 @@ describe("Menu", () => {
     Effect.gen(function* () {
       const story = yield* Story.make(MenuStory, {});
       const change = { group: "sort", value: "date", reason: "item-press" };
-      story.send(MenuMessage.RequestedValue(change)).emitted(MenuEvents.RequestedValue(change));
+      story
+        .send(MenuMessage.RequestedValue({ level: "", ...change }))
+        .emitted(MenuEvents.RequestedValue(change));
       const menu = Story.parts(Menu, story.current);
       const checked = (group: MenuRadioGroup) =>
         ["name", "date"].filter((value) => menu.radioItemState({ group, value }).checked);
@@ -268,9 +272,9 @@ describe("Menu", () => {
       // Any object stands in for the element here: a server moves nothing.
       const container = {} as Element;
       const { html } = yield* rendered({ initialOpen: true, container });
-      assert.match(html, /<div style="display: ?contents;?"><section [^>]*role="menu"/);
+      assert.match(html, /<span style="display: ?contents;?"><section [^>]*role="menu"/);
       const inPlace = yield* rendered({ initialOpen: true });
-      assert.notMatch(inPlace.html, /<div style="display: ?contents;?"><section/);
+      assert.notMatch(inPlace.html, /<span style="display: ?contents;?"><section/);
     }),
   );
 

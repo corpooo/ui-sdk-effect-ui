@@ -32,9 +32,18 @@
     "menu.spec.ts › trigger › open written back after openchange keeps focus on the last item": "The web menu's `open` property only. specs/menu.spec.ts checks ArrowUp through a parent-held `open` for ours.",
     "menu.spec.ts › trigger › setOpen(true) on an open menu leaves focus where it is": "The web menu's `api` property only.",
     "menu.spec.ts › dismissal › pressing a scrollbar outside the menu leaves it open": "Skips where the browser hides scrollbars, as headless Chromium does.",
-    "menu.spec.ts › submenu with a pointer": "Skips in the sheet project, where a submenu opens on a press. It runs in the others.",
-    "menu.spec.ts › positioning": "Skips in the sheet project, where a sheet isn't placed against its trigger. It runs in the others.",
-    "menu.spec.ts › animation › the popup animates in from its starting style": "Skips in the sheet project, where a sheet slides in. It runs in the others.",
+    "menu.spec.ts › submenu with a pointer": {
+      "why": "Skips in the sheet project, where a submenu opens on a press.",
+      "runsIn": ["effect", "effect-ssr", "effect-portal"]
+    },
+    "menu.spec.ts › positioning": {
+      "why": "Skips in the sheet project, where a sheet isn't placed against its trigger.",
+      "runsIn": ["effect", "effect-ssr", "effect-portal"]
+    },
+    "menu.spec.ts › animation › the popup animates in from its starting style": {
+      "why": "Skips in the sheet project, where a sheet slides in.",
+      "runsIn": ["effect", "effect-ssr", "effect-portal"]
+    },
     "menu.cases.spec.ts › menu cases › shortcuts › data menus match Option shortcuts by physical key": "Data menus only: Menu takes no `items` yet, so there is no effect-data fixture.",
     "menu.cases.spec.ts › menu cases › shortcuts › data menus run shortcuts of items added later": "Data menus only: Menu takes no `items` yet, so there is no effect-data fixture.",
     "menu.cases.spec.ts › menu cases › shortcuts › turning shortcuts off after the menu renders stops them": "Data menus only: Menu takes no `items` yet, so there is no effect-data fixture.",
@@ -43,10 +52,22 @@
     "menu.cases.spec.ts › menu cases › shortcuts › a data menu shortcut with Command or Control runs while typing in a field": "Data menus only: Menu takes no `items` yet, so there is no effect-data fixture.",
     "menu.cases.spec.ts › menu cases › shortcuts › a data menu shortcut without a modifier runs outside a field": "Data menus only: Menu takes no `items` yet, so there is no effect-data fixture.",
     "menu.enhancements.spec.ts › enhancements › data menus run item shortcuts while closed": "Data menus only: Menu takes no `items` yet, so there is no effect-data fixture.",
-    "menu.enhancements.spec.ts › enhancements › menus render into their container": "Portal projects only. It runs in effect-portal.",
-    "menu.cases.spec.ts › controlled menus": "Runs only for frameworks named react, vue or svelte. It runs in react-effect, our fixture under such a name.",
-    "menu.cases.spec.ts › a menu with defaultOpen shows on a client-only mount @enhancement": "Skips server-rendered fixtures, which menu.ssr.spec.ts covers. It runs in effect.",
-    "presentation.spec.ts › open from the start with presentation auto": "Server-rendered fixtures only. The menu's runs in effect-ssr.",
+    "menu.enhancements.spec.ts › enhancements › menus render into their container": {
+      "why": "Portal projects only.",
+      "runsIn": ["effect-portal"]
+    },
+    "menu.cases.spec.ts › controlled menus": {
+      "why": "Runs only for frameworks named react, vue or svelte. react-effect is our fixture under such a name.",
+      "runsIn": ["react-effect"]
+    },
+    "menu.cases.spec.ts › a menu with defaultOpen shows on a client-only mount @enhancement": {
+      "why": "Skips server-rendered fixtures, which menu.ssr.spec.ts covers.",
+      "runsIn": ["effect", "effect-portal"]
+    },
+    "presentation.spec.ts › open from the start with presentation auto": {
+      "why": "Server-rendered fixtures only.",
+      "runsIn": ["effect-ssr"]
+    },
     "presentation.spec.ts › sheet code that loads late › a popup that leaves the page before the code arrives never shows": "Custom elements only: it skips every framework but web.",
     "presentation.spec.ts › sheet code that loads late › code that fails to load shows the popup as it would be without a sheet": "Custom elements only: it skips every framework but web."
   }
