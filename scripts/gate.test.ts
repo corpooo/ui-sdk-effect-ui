@@ -138,6 +138,29 @@ test("an exempt spec file may run no test, and its exemption must skip one", () 
   ]);
 });
 
+test("a spec file whose every test skips for an explained reason may run no test", () => {
+  // It opens a fixture we ship only in a test that skips by its own rule, and
+  // one we don't ship for the framework in its other test.
+  const counts = tally(report({ "toggle.spec.ts": ["skipped", "skipped"] }));
+  const byRule = {
+    project: "effect",
+    file: "toggle.spec.ts",
+    title: "toggle.spec.ts › group › test 0",
+  };
+  const noFixture = {
+    project: "effect",
+    file: "toggle.spec.ts",
+    title: "toggle.spec.ts › group › test 1",
+    fixture: "toggle-cases",
+  };
+  const exempt = { [byRule.title]: "Skips server-rendered fixtures." };
+  expect(problems({ ...covered, counts, exempt, skips: [byRule, noFixture] })).toEqual([]);
+  // One skip nothing explains, so the file may have checked nothing.
+  expect(problems({ ...covered, counts, exempt, skips: [byRule] })).toEqual([
+    "toggle.spec.ts opens a fixture we ship, and ran no test in effect.",
+  ]);
+});
+
 test("a test that a spec file for a fixture we ship skips by its own rule is a problem, unless exempt", () => {
   const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
   const title = "toggle.spec.ts › controlled › closing returns focus";

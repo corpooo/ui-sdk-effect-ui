@@ -398,7 +398,10 @@ function attach(node: Element, first: Handle) {
   let current: Binding | undefined;
   // Where Effect UI put the element, which it goes back to before Effect UI takes it out.
   const home = node.parentNode;
-  const place = (parent: ParentNode | null | undefined) => {
+  // Only within one tree: across a shadow root's edge the ids that name and
+  // anchor a popup, like `aria-labelledby`, point at nothing.
+  const place = (into: ParentNode | undefined) => {
+    const parent = into && home && into.getRootNode() === home.getRootNode() ? into : home;
     if (parent && node.parentNode !== parent) {
       parent.appendChild(node);
     }
@@ -437,7 +440,7 @@ function attach(node: Element, first: Handle) {
         // Before it binds, so the parts whose mounts run after it read the consumer's id.
         takeOwnId(next, shown.id);
         // Before it binds too: a popup that moves once core has shown it leaves the top layer.
-        place(binding.into ?? home);
+        place(binding.into);
         if (next !== part) {
           leave();
           part = next;
@@ -468,7 +471,7 @@ function attach(node: Element, first: Handle) {
     detach() {
       leave();
       part = undefined;
-      place(home);
+      place(undefined);
       entry.sinks.delete(sink);
       releases.reverse().forEach((release) => release());
     },
@@ -516,7 +519,8 @@ const BindPart = Mount.make(
  * popup's container. The mount moves it there, and back before Effect UI
  * takes it out, so the part draws it inside an element of its own, which
  * stays. Effect UI hears events on the element the app is mounted on, so
- * `into` has to be inside that one.
+ * `into` has to be inside that one. It also has to be in the element's own
+ * tree, a document or a shadow root, or the element stays where it is.
  */
 export const drawn = <Msg, P extends Primitive, S extends SlotName<P>>(
   builder: View.ContainerBuilder<Msg>,

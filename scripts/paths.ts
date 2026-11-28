@@ -30,8 +30,16 @@ export const playwrightConfig = at("./playwright.config.ts");
 /** Where the playground is served. Upstream's config reads the same variable for its base URL. */
 export const port = process.env.PLAYGROUND_PORT ?? "5300";
 
-/** The Playwright projects the overlay adds, one per fixture file name. */
-export const frameworks = ["effect", "effect-ssr"];
+/**
+ * The Playwright projects the overlay adds, one per fixture file name.
+ * `react-effect` is our fixture under a name upstream's allow-lists let
+ * through: a test that names the frameworks it runs for, and skips the rest,
+ * runs for us there. `fixtures/<name>/react-effect.ts` exports `effect.ts`'s.
+ */
+export const frameworks = ["effect", "effect-ssr", "react-effect"];
+
+/** The framework whose fixtures run again in every other way upstream runs React's, like with popups in a container. */
+export const variedFramework = "effect";
 
 /** The Playwright projects that run our own specs, each with the framework whose fixture files it opens. */
 export const ownProjects: Record<string, string> = { own: "effect", "own-ssr": "effect-ssr" };

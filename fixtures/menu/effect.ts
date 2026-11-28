@@ -129,6 +129,12 @@ function fixture() {
 }
 
 function mount(root: HTMLElement) {
+  // The page makes a portal container beside the app. Effect UI hears events
+  // on the element the app is mounted on, so the container moves into it.
+  const { container } = menuOptions();
+  if (container) {
+    root.append(container);
+  }
   Layer.launch(BrowserHost.mount(fixture(), {}, root)).pipe(Effect.runFork);
 }
 
