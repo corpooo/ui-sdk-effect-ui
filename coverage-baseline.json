@@ -12,6 +12,7 @@
       "tabs-render",
       "toggle",
       "toggle-render",
+      "own-element-move",
       "own-hydration-mismatch",
       "own-menu",
       "own-tabs-ids",
