@@ -13,6 +13,7 @@
       "toggle",
       "toggle-render",
       "own-hydration-mismatch",
+      "own-menu",
       "own-tabs-ids",
       "own-tabs-keys",
       "own-tabs-panels",
