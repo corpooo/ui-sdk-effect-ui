@@ -171,16 +171,9 @@ export function problems(input: {
   const allOwn = new Set(Object.values(input.ownShipped).flat());
   const runsIn = (key: string) => exemptionOf(input.exempt[key]!).runsIn;
   const under = (title: string, key: string) => `${title} › `.startsWith(`${key} › `);
-  // The exemption that covers a test in a project, which it doesn't in a project it runs in.
-  const exemption = (title: string, project: string) =>
-    Object.keys(input.exempt).find((key) => under(title, key) && !runsIn(key).includes(project));
-  // A skip that needs no fixing: for want of a fixture we don't ship for the
-  // project's framework, or by the spec file's own rule, which the baseline exempts.
-  const explained = ({ project, title, fixture }: Skip) =>
-    fixture
-      ? !all(input.frameworkOf[project] ?? project).includes(fixture) &&
-        !(fixture.startsWith("own-") && !allOwn.has(fixture))
-      : exemption(title, project) !== undefined;
+  // The exemptions that cover a test in a project, which one doesn't in a project it runs in.
+  const exemptions = (title: string, project: string) =>
+    Object.keys(input.exempt).filter((key) => under(title, key) && !runsIn(key).includes(project));
   for (const project of input.projects) {
     const files = input.expected[project] ?? [];
     // No list is a report the run never finished writing, or a project with no fixture.
@@ -188,20 +181,8 @@ export function problems(input: {
       found.push(`The run names no spec file that opens a fixture we ship for ${project}.`);
     }
     for (const file of files) {
-      const count = input.counts.get(project)?.get(file);
-      // A file can open a fixture we ship only in tests that skip for the
-      // project by their own rule: every one of its skips is then explained,
-      // and one at least is such a rule. Skips for fixtures we don't ship alone
-      // would be tests that skipped before they reached ours.
-      const skipped = input.skips.filter((skip) => skip.project === project && skip.file === file);
-      const allExplained =
-        !!count &&
-        count.fixme === 0 &&
-        count.skipped > 0 &&
-        skipped.length === count.skipped &&
-        skipped.every(explained) &&
-        skipped.some(({ fixture }) => !fixture);
-      if (!ran(count) && !allExplained) {
+      // A file that opens a fixture we ship runs nothing only where the baseline exempts the file.
+      if (!ran(input.counts.get(project)?.get(file)) && exemptions(file, project).length === 0) {
         found.push(`${file} opens a fixture we ship, and ran no test in ${project}.`);
       }
     }
@@ -238,10 +219,9 @@ export function problems(input: {
         found.push(`${file} opens ${fixture}, and we have no fixture of that name.`);
       }
     } else if (input.expected[project]?.includes(file)) {
-      const key = exemption(title, project);
-      if (key) {
-        used.add(key);
-      } else {
+      const keys = exemptions(title, project);
+      keys.forEach((key) => used.add(key));
+      if (keys.length === 0) {
         found.push(
           `${title} skipped in ${project} by its own rule. Exempt it in coverage-baseline.json, with why.`,
         );

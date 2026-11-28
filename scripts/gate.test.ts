@@ -139,9 +139,8 @@ test("an exempt spec file may run no test, and its exemption must skip one", () 
   ]);
 });
 
-test("a spec file whose every test skips for an explained reason may run no test", () => {
-  // It opens a fixture we ship only in a test that skips by its own rule, and
-  // one we don't ship for the framework in its other test.
+test("a spec file runs no test in a project only where the baseline exempts the file there", () => {
+  // Every test skipped, by the file's own rule or for a fixture we don't ship.
   const counts = tally(report({ "toggle.spec.ts": ["skipped", "skipped"] }));
   const byRule = {
     project: "effect",
@@ -149,21 +148,24 @@ test("a spec file whose every test skips for an explained reason may run no test
     title: "toggle.spec.ts › group › test 0",
   };
   const noFixture = {
-    project: "effect",
-    file: "toggle.spec.ts",
+    ...byRule,
     title: "toggle.spec.ts › group › test 1",
     fixture: "toggle-cases",
   };
-  const exempt = { [byRule.title]: "Skips server-rendered fixtures." };
-  expect(problems({ ...covered, counts, exempt, skips: [byRule, noFixture] })).toEqual([]);
-  // One skip nothing explains, so the file may have checked nothing.
-  expect(problems({ ...covered, counts, exempt, skips: [byRule] })).toEqual([
-    "toggle.spec.ts opens a fixture we ship, and ran no test in effect.",
+  const skipped = { ...covered, counts, skips: [byRule, noFixture] };
+  const ranNone = "toggle.spec.ts opens a fixture we ship, and ran no test in effect.";
+  // Exempting the test leaves the file to have run nothing.
+  expect(problems({ ...skipped, exempt: { [byRule.title]: "Server-rendered only." } })).toEqual([
+    ranNone,
   ]);
-  // Every test skipped for a fixture we don't ship, before it could reach ours.
-  const otherFixture = { ...byRule, fixture: "toggle-cases" };
-  expect(problems({ ...covered, counts, skips: [otherFixture, noFixture] })).toEqual([
-    "toggle.spec.ts opens a fixture we ship, and ran no test in effect.",
+  expect(problems({ ...skipped, exempt: { "toggle.spec.ts": "Web only." } })).toEqual([]);
+  // A file exemption that names where the file runs doesn't hold there.
+  const elsewhere = { "toggle.spec.ts": { why: "Client-rendered only.", runsIn: ["effect"] } };
+  expect(problems({ ...skipped, exempt: elsewhere })).toEqual([
+    ranNone,
+    `${byRule.title} skipped in effect by its own rule. Exempt it in coverage-baseline.json, with why.`,
+    "coverage-baseline.json exempts toggle.spec.ts, which skipped no test. Remove its exemption.",
+    "coverage-baseline.json says toggle.spec.ts runs in effect, and no test of it passed there.",
   ]);
 });
 

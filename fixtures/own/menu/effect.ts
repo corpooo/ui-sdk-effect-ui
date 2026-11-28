@@ -19,6 +19,8 @@ const controllerHeld = params.get("controller") === "held";
 const sheetContainer = params.has("sheet") ? document.createElement("div") : undefined;
 
 const controller = createMenuController();
+// The other commands menu's, until the two menus swap controllers.
+const otherController = createMenuController();
 
 const FixtureMessage = UiSchema.TaggedEnum({
   RequestedOpenHeld: { open: Schema.Boolean, reason: Schema.String },
@@ -30,7 +32,8 @@ const FixtureMessage = UiSchema.TaggedEnum({
   ClickedOpenWithController: {},
   RequestedOpenController: { open: Schema.Boolean },
   ClickedSheetCommands: {},
-  ClickedMoveController: {},
+  ClickedSwapControllers: {},
+  ClickedOpenWithOtherController: {},
   RequestedCheckedNested: { path: Schema.Array(Schema.String), value: Schema.String },
 });
 
@@ -38,6 +41,11 @@ const FixtureMessage = UiSchema.TaggedEnum({
 const OpenMenu = Command.make("OpenMenu", {}, () =>
   Effect.sync(() => {
     void controller.open({ focus: "first" });
+  }),
+);
+const OpenOtherMenu = Command.make("OpenOtherMenu", {}, () =>
+  Effect.sync(() => {
+    void otherController.open({ focus: "first" });
   }),
 );
 
@@ -60,8 +68,8 @@ const Fixture = Html.component({
     hidden: Schema.Boolean,
     controlled: Schema.Boolean,
     sheet: Schema.Boolean,
-    // Whether the controller drives the other commands menu.
-    moved: Schema.Boolean,
+    // Whether the two commands menus swapped controllers.
+    swapped: Schema.Boolean,
   }),
   message: FixtureMessage,
 }).make({
@@ -73,7 +81,7 @@ const Fixture = Html.component({
     hidden: false,
     controlled: false,
     sheet: false,
-    moved: false,
+    swapped: false,
   }),
   update: ($, message) =>
     FixtureMessage.match(message, {
@@ -93,7 +101,8 @@ const Fixture = Html.component({
       ClickedOpenWithController: () => $.run(OpenMenu.make({}).pipe(Command.asNoop)),
       RequestedOpenController: ({ open }) => $.evolve({ controlled: open }),
       ClickedSheetCommands: () => $.evolve({ sheet: true }),
-      ClickedMoveController: () => $.evolve({ moved: true }),
+      ClickedSwapControllers: () => $.evolve({ swapped: true }),
+      ClickedOpenWithOtherController: () => $.run(OpenOtherMenu.make({}).pipe(Command.asNoop)),
     }),
   view: (h, model) =>
     h.div.class("fixture").children(
@@ -199,7 +208,7 @@ const Fixture = Html.component({
       Menu(h, {
         key: "controller",
         props: {
-          ...(!model.moved && { controller }),
+          controller: model.swapped ? otherController : controller,
           ...(controllerHeld && { open: model.controlled }),
           ...(model.sheet && { presentation: "sheet" as const }),
         },
@@ -220,10 +229,10 @@ const Fixture = Html.component({
                 ),
             ),
       }),
-      // The menu the controller drives once it moves here.
+      // The menu the other controller drives, until the two swap.
       Menu(h, {
         key: "other-commands",
-        props: model.moved ? { controller } : {},
+        props: { controller: model.swapped ? controller : otherController },
         onEmit: ignored,
         view: (menu) =>
           h.div
@@ -238,8 +247,11 @@ const Fixture = Html.component({
         .on("click", () => FixtureMessage.ClickedOpenWithController())
         .children("Open with controller"),
       h.button
-        .on("click", () => FixtureMessage.ClickedMoveController())
-        .children("Move controller"),
+        .on("click", () => FixtureMessage.ClickedOpenWithOtherController())
+        .children("Open with the other controller"),
+      h.button
+        .on("click", () => FixtureMessage.ClickedSwapControllers())
+        .children("Swap controllers"),
       h.button
         .on("click", () => FixtureMessage.ClickedSheetCommands())
         .children("Commands as a sheet"),

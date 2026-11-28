@@ -26,6 +26,10 @@
   "exempt": {
     "elements.spec.ts": "Custom elements only: it skips every framework but web.",
     "web-menu.spec.ts": "Custom elements only: it skips every framework but web.",
+    "menu.cases.spec.ts": {
+      "why": "Server-rendered, it runs nothing: menu-cases has no effect-ssr fixture, and its other tests skip server-rendered fixtures by their own rule.",
+      "runsIn": ["effect", "effect-portal", "react-effect"]
+    },
     "menu.cases.spec.ts › web component attributes": "Custom elements only: it skips every framework but web.",
     "menu.enhancements.spec.ts › web components": "Custom elements only: it skips every framework but web.",
     "menu.spec.ts › trigger › open written back during openchange keeps focus on the last item": "The web menu's `open` property only. specs/menu.spec.ts checks ArrowUp through a parent-held `open` for ours.",

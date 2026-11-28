@@ -137,9 +137,14 @@ export type MenuContent = MenuContentProps;
 /**
  * An action, as the consumer's `view` passes it to `menu.item`. Its `value`
  * names it among the menu's items and arrives in `Picked`. An item without
- * one takes an `id`, and reports no press.
+ * one takes an `id`, and reports no press. Each is the menu's one item of
+ * that name: two items given the same are one item to core.
  */
-export type MenuItem = Omit<MenuItemProps, "onSelect"> & { readonly id?: string };
+export type MenuItem = Omit<MenuItemProps, "onSelect" | "value"> &
+  (
+    | { readonly value: string; readonly id?: string }
+    | { readonly value?: undefined; readonly id: string }
+  );
 
 /** An item that checks and unchecks an option, as the consumer's `view` passes it to `menu.checkboxItem`. */
 export type MenuCheckboxItem = Omit<MenuCheckboxItemProps, "defaultChecked" | "onCheckedChange"> & {
@@ -376,7 +381,7 @@ export const Menu = Html.component({
               instance,
               "item-indicator",
               defined({
-                id: `radio-${item.group.name}-${item.value}`,
+                id: `radio-${levelOf([item.group.name, item.value])}`,
                 item: "radio-item" as const,
                 itemKey: item.value,
                 group: item.group.name,

@@ -273,44 +273,45 @@ function acquire(handle: Handle) {
   };
 }
 
-// The handle a controller's component last rendered, which a subscription
-// that starts after that render holds first. Only in a browser, as `live` is.
-const rendered = new WeakMap<object, Handle>();
-
 // What keeps a controller's instance: the subscription's hold, and the
-// instance it keeps now, which each render of the component names.
+// instance it keeps, which the component's first render with the
+// controller names. A component's instance keeps its id for life, so a hold
+// keeps that one instance, and a render of any other component with the same
+// controller, like a server's or another menu's, leaves it alone.
 type Hold = {
   handle: Handle | undefined;
   release: () => void;
   readonly sink: (message: unknown) => void;
 };
-const holds = new WeakMap<object, Hold>();
 
-// A number for each controller, as a subscription's dependencies take only primitives.
-const controllers = new WeakMap<object, number>();
+// All a controller has here. `id` numbers it, as a subscription's
+// dependencies take only primitives. `unheld` is the handle a component
+// rendered while no hold had the controller, which the subscription that
+// starts after that render takes. Only in a browser, as `live` is.
+type Controlled = { readonly id: number; hold?: Hold | undefined; unheld?: Handle | undefined };
+const controllers = new WeakMap<object, Controlled>();
 let numbered = 0;
-const idOf = (controller: object) => {
-  if (!controllers.has(controller)) {
-    controllers.set(controller, numbered++);
+const controlled = (controller: object) => {
+  let found = controllers.get(controller);
+  if (!found) {
+    controllers.set(controller, (found = { id: numbered++ }));
   }
-  return controllers.get(controller)!;
+  return found;
 };
 
-// Keeps the instance of `handle`, letting go of the one kept before, and hands
-// it the render's options: with no part in the page, no mount does.
+// Keeps the instance of `handle` from the first render on, and hands it the
+// render's options: with no part in the page, no mount does.
 function keep(hold: Hold, handle: Handle) {
-  if (hold.handle?.id !== handle.id) {
+  if (!hold.handle) {
     const releases = chainOf(handle).map(acquire);
     const entry = live.get(handle.id)!;
     entry.held = hold.sink;
-    const before = hold.release;
     hold.release = () => {
       if (entry.held === hold.sink) {
         entry.held = undefined;
       }
       releases.reverse().forEach((release) => release());
     };
-    before();
   }
   hold.handle = handle;
   // As a mount's render does, so a change core reports waits for the render to finish.
@@ -339,7 +340,7 @@ export const held = <Msg>(
         // Started again for another controller, which the instance then takes.
         Subscription.direct<object, Msg>(
           "HoldInstance",
-          idOf(controller),
+          controlled(controller).id,
           controller,
           (_, controls) => {
             const hold: Hold = {
@@ -347,18 +348,21 @@ export const held = <Msg>(
               release: () => {},
               sink: (message) => controls.emit(message as Msg),
             };
-            holds.set(controller, hold);
+            const own = controlled(controller);
+            own.hold = hold;
             // A render that came first named the handle. One still to come, as
-            // for a controller another component just gave up, names it then.
-            controls.enter((latest) => {
-              const handle = rendered.get(latest);
-              if (handle && !hold.handle) {
+            // for a controller another component just gave up, names it then:
+            // a handle another hold had is that component's, with its options.
+            controls.enter(() => {
+              const handle = own.unheld;
+              own.unheld = undefined;
+              if (handle) {
                 keep(hold, handle);
               }
             });
             return () => {
-              if (holds.get(controller) === hold) {
-                holds.delete(controller);
+              if (own.hold === hold) {
+                own.hold = undefined;
               }
               hold.release();
             };
@@ -371,9 +375,11 @@ export function holding(controller: object | undefined, handle: Handle) {
   if (controller === undefined || typeof document === "undefined") {
     return;
   }
-  rendered.set(controller, handle);
-  const hold = holds.get(controller);
-  if (hold) {
+  const own = controlled(controller);
+  const { hold } = own;
+  if (!hold) {
+    own.unheld = handle;
+  } else if (!hold.handle || hold.handle.id === handle.id) {
     keep(hold, handle);
   }
 }

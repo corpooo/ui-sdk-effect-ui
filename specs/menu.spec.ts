@@ -210,11 +210,19 @@ for (const owner of ["Kept", "Held"]) {
     await expect(menuNamed(page, "Commands")).toHaveAttribute("data-presentation", "sheet");
   });
 
-  test(`${owner}: a controller another menu takes opens that menu`, async ({ page, open }) => {
+  test(`${owner}: two menus that swap controllers each open with the other's`, async ({
+    page,
+    open,
+  }) => {
     await open("own-menu", owner === "Held" ? { controller: "held" } : {});
-    await buttonNamed(page, "Move controller").click();
+    await buttonNamed(page, "Swap controllers").click();
     await buttonNamed(page, "Open with controller").click();
     await expect(menuNamed(page, "Other commands")).toBeVisible();
+    await expect(page.getByRole("menu")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await buttonNamed(page, "Open with the other controller").click();
+    await expect(menuNamed(page, "Commands")).toBeVisible();
     await expect(page.getByRole("menu")).toHaveCount(1);
   });
 }
