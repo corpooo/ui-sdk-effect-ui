@@ -13,8 +13,9 @@ export type Report = {
   };
   suites: Suite[];
 };
-type Suite = { file: string; specs?: Spec[]; suites?: Suite[] };
+type Suite = { file: string; title: string; specs?: Spec[]; suites?: Suite[] };
 type Spec = {
+  title: string;
   tests: {
     projectName: string;
     status: string;
@@ -29,12 +30,30 @@ export type Counts = { passed: number; skipped: number; failed: number; fixme: n
 /** Whether any test of the file ran. */
 export const ran = (count: Counts | undefined) => !!count && count.passed + count.failed > 0;
 
-const specsOf = (suite: Suite): Spec[] => [
-  ...(suite.specs ?? []),
-  ...(suite.suites ?? []).flatMap(specsOf),
-];
-
 type Test = Spec["tests"][number];
+
+/**
+ * Every test of the run, with its spec file and its title path, as
+ * `file › describe › title`. Spec directories are flat, and a project runs
+ * one of them, so a file is named by its base name: the report names our own
+ * specs by their path from upstream's.
+ */
+const testsOf = (report: Report) =>
+  report.suites.flatMap((suite) => {
+    const file = basename(suite.file);
+    const inside = (
+      { specs = [], suites = [] }: Suite,
+      path: string,
+    ): { title: string; test: Test }[] => [
+      ...specs.flatMap((spec) =>
+        spec.tests.map((test) => ({ title: `${path} › ${spec.title}`, test })),
+      ),
+      ...suites.flatMap((child) => inside(child, `${path} › ${child.title}`)),
+    ];
+    return inside(suite, file).map((found) => ({ file, ...found }));
+  });
+
+const stopped = (test: Test) => !!test.results?.some(({ status }) => status === "interrupted");
 const outcome = ({ status, annotations = [] }: Test): keyof Counts => {
   if (status === "skipped") {
     return annotations.some(({ type }) => type === "fixme") ? "fixme" : "skipped";
@@ -46,52 +65,40 @@ const outcome = ({ status, annotations = [] }: Test): keyof Counts => {
   return "passed";
 };
 
-/**
- * Each project's tests by spec file. Spec directories are flat, and a
- * project runs one of them, so a file is named by its base name: the report
- * names our own specs by their path from upstream's.
- */
+/** Each project's tests by spec file. */
 export function tally(report: Report) {
   const counts = new Map<string, Map<string, Counts>>();
-  for (const suite of report.suites) {
-    const file = basename(suite.file);
-    for (const test of specsOf(suite).flatMap((spec) => spec.tests)) {
-      let files = counts.get(test.projectName);
-      if (!files) {
-        counts.set(test.projectName, (files = new Map()));
-      }
-      let count = files.get(file);
-      if (!count) {
-        files.set(file, (count = { passed: 0, skipped: 0, failed: 0, fixme: 0 }));
-      }
-      count[outcome(test)]++;
+  for (const { file, test } of testsOf(report)) {
+    let files = counts.get(test.projectName);
+    if (!files) {
+      counts.set(test.projectName, (files = new Map()));
     }
+    let count = files.get(file);
+    if (!count) {
+      files.set(file, (count = { passed: 0, skipped: 0, failed: 0, fixme: 0 }));
+    }
+    count[outcome(test)]++;
   }
   return counts;
 }
 
 /** How many tests a stopped run cut short. Playwright reports each as skipped. */
 export const interrupted = (report: Report) =>
-  report.suites
-    .flatMap(specsOf)
-    .flatMap((spec) => spec.tests)
-    .filter((test) => test.results?.some(({ status }) => status === "interrupted")).length;
+  testsOf(report).filter(({ test }) => stopped(test)).length;
 
-/** Each test that skipped itself because a fixture it opens is missing, as upstream's `open` says. */
-export function missing(report: Report) {
-  const found: { project: string; file: string; fixture: string }[] = [];
-  for (const suite of report.suites) {
-    for (const test of specsOf(suite).flatMap((spec) => spec.tests)) {
-      for (const { description = "" } of test.annotations ?? []) {
-        const fixture = /^No ([\w-]+) fixture for /.exec(description)?.[1];
-        if (fixture) {
-          found.push({ project: test.projectName, file: basename(suite.file), fixture });
-        }
-      }
-    }
-  }
-  return found;
-}
+/** A test that skipped itself, with the fixture it wanted when it skipped for want of one, as upstream's `open` says. */
+export type Skip = { project: string; file: string; title: string; fixture?: string };
+
+/** Each test that skipped, leaving out `test.fixme`s and tests a stopped run cut short. */
+export const skips = (report: Report): Skip[] =>
+  testsOf(report)
+    .filter(({ test }) => outcome(test) === "skipped" && !stopped(test))
+    .map(({ file, title, test }) => {
+      const fixture = (test.annotations ?? [])
+        .map(({ description = "" }) => /^No ([\w-]+) fixture for /.exec(description)?.[1])
+        .find(Boolean);
+      return { project: test.projectName, file, title, ...(fixture && { fixture }) };
+    });
 
 /**
  * Why the run doesn't cover what we ship, or nothing when it does.
@@ -121,11 +128,11 @@ export function problems(input: {
   ownShipped: Record<string, string[]>;
   /** Every fixture some spec file opens by name. */
   opened: string[];
-  /** The tests that skipped for a missing fixture. */
-  missing: { project: string; file: string; fixture: string }[];
+  /** The tests that skipped. */
+  skips: Skip[];
   /** The fixtures each framework must keep shipping. */
   baseline: Record<string, string[]>;
-  /** Spec files that skip every test for us by their own rule, each with why. */
+  /** The tests that skip for us by their spec file's own rule, each with why: a test, or the describe block or spec file it is in, by title path. */
   exempt: Record<string, string>;
 }) {
   const found: string[] = [];
@@ -144,11 +151,8 @@ export function problems(input: {
       found.push(`The run names no spec file that opens a fixture we ship for ${project}.`);
     }
     for (const file of files) {
-      const tests = ran(input.counts.get(project)?.get(file));
-      if (!tests && !(file in input.exempt)) {
+      if (!ran(input.counts.get(project)?.get(file)) && !(file in input.exempt)) {
         found.push(`${file} opens a fixture we ship, and ran no test in ${project}.`);
-      } else if (tests && file in input.exempt) {
-        found.push(`${file} is exempt, and ran tests in ${project}. Remove its exemption.`);
       }
     }
   }
@@ -177,13 +181,33 @@ export function problems(input: {
     }
   }
   // A missing fixture of ours is a run that lost its links, or a spec that names one we don't have.
+  // Any other skip in a spec file that opens a fixture we ship is its own rule, which the baseline explains.
   const allOwn = new Set(Object.values(input.ownShipped).flat());
-  for (const { project, file, fixture } of input.missing) {
+  const used = new Set<string>();
+  for (const { project, file, title, fixture } of input.skips) {
     const framework = input.frameworkOf[project] ?? project;
-    if (all(framework).includes(fixture)) {
-      found.push(`${file} skipped a test in ${project} for want of ${fixture}, which we ship.`);
-    } else if (fixture.startsWith("own-") && !allOwn.has(fixture)) {
-      found.push(`${file} opens ${fixture}, and we have no fixture of that name.`);
+    if (fixture) {
+      if (all(framework).includes(fixture)) {
+        found.push(`${file} skipped a test in ${project} for want of ${fixture}, which we ship.`);
+      } else if (fixture.startsWith("own-") && !allOwn.has(fixture)) {
+        found.push(`${file} opens ${fixture}, and we have no fixture of that name.`);
+      }
+    } else if (input.expected[project]?.includes(file)) {
+      const key = Object.keys(input.exempt).find((key) => `${title} › `.startsWith(`${key} › `));
+      if (key) {
+        used.add(key);
+      } else {
+        found.push(
+          `${title} skipped in ${project} by its own rule. Exempt it in coverage-baseline.json, with why.`,
+        );
+      }
+    }
+  }
+  for (const key of Object.keys(input.exempt)) {
+    if (!used.has(key)) {
+      found.push(
+        `coverage-baseline.json exempts ${key}, which skipped no test. Remove its exemption.`,
+      );
     }
   }
   // Both ways: a fixture it names that went, and one it doesn't name, which nothing would miss.

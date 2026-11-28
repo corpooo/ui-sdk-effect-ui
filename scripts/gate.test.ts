@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { interrupted, missing, problems, tally, type Report } from "./gate.ts";
+import { interrupted, problems, skips, tally, type Report } from "./gate.ts";
 
 // A test as the report gives it: by its status, or as "fixme" for a `test.fixme`.
 const entry = (projectName: string, status: string) =>
@@ -7,12 +7,22 @@ const entry = (projectName: string, status: string) =>
     ? { projectName, status: "skipped", annotations: [{ type: "fixme" }] }
     : { projectName, status };
 
+// Each test is titled by its place, inside a `describe` block titled "group".
 const report = (tests: Record<string, string[]>, projectName = "effect"): Report => ({
   config: {},
   suites: Object.entries(tests).map(([file, statuses]) => ({
     file,
-    // Nested, as a `describe` block is.
-    suites: [{ file, specs: statuses.map((status) => ({ tests: [entry(projectName, status)] })) }],
+    title: file,
+    suites: [
+      {
+        file,
+        title: "group",
+        specs: statuses.map((status, index) => ({
+          title: `test ${index}`,
+          tests: [entry(projectName, status)],
+        })),
+      },
+    ],
   })),
 });
 
@@ -31,7 +41,7 @@ const covered = {
   shipped: { effect: ["toggle"], "effect-ssr": ["toggle"] },
   ownShipped: { effect: ["own-tabs-keys"], "effect-ssr": [] },
   opened: ["toggle", "own-tabs-keys"],
-  missing: [],
+  skips: [],
   baseline: { effect: ["toggle", "own-tabs-keys"], "effect-ssr": ["toggle"] },
   exempt: {},
 };
@@ -106,14 +116,50 @@ test("a spec file for a fixture we ship that is missing from the run is a proble
   ]);
 });
 
-test("an exempt spec file may run no test, and must not run any", () => {
+test("an exempt spec file may run no test, and its exemption must skip one", () => {
   const exempt = { "toggle.spec.ts": "Skips every framework but web." };
+  const skip = {
+    project: "effect",
+    file: "toggle.spec.ts",
+    title: "toggle.spec.ts › group › test 0",
+  };
   expect(
-    problems({ ...covered, exempt, counts: tally(report({ "toggle.spec.ts": ["skipped"] })) }),
+    problems({
+      ...covered,
+      exempt,
+      counts: tally(report({ "toggle.spec.ts": ["skipped"] })),
+      skips: [skip],
+    }),
   ).toEqual([]);
   expect(
     problems({ ...covered, exempt, counts: tally(report({ "toggle.spec.ts": ["expected"] })) }),
-  ).toEqual(["toggle.spec.ts is exempt, and ran tests in effect. Remove its exemption."]);
+  ).toEqual([
+    "coverage-baseline.json exempts toggle.spec.ts, which skipped no test. Remove its exemption.",
+  ]);
+});
+
+test("a test that a spec file for a fixture we ship skips by its own rule is a problem, unless exempt", () => {
+  const counts = tally(report({ "toggle.spec.ts": ["expected"] }));
+  const title = "toggle.spec.ts › controlled › closing returns focus";
+  const skipped = {
+    ...covered,
+    counts,
+    skips: [{ project: "effect", file: "toggle.spec.ts", title }],
+  };
+  const problem = `${title} skipped in effect by its own rule. Exempt it in coverage-baseline.json, with why.`;
+  expect(problems(skipped)).toEqual([problem]);
+  // An exemption names a test, or the describe block or spec file it is in.
+  for (const key of [title, "toggle.spec.ts › controlled", "toggle.spec.ts"]) {
+    expect(problems({ ...skipped, exempt: { [key]: "React, Vue and Svelte only." } })).toEqual([]);
+  }
+  // A title the test's only starts with names another block.
+  expect(problems({ ...skipped, exempt: { "toggle.spec.ts › control": "Typo." } })).toEqual([
+    problem,
+    "coverage-baseline.json exempts toggle.spec.ts › control, which skipped no test. Remove its exemption.",
+  ]);
+  // A spec file that opens no fixture we ship loads a page for another adapter, and skips as it should.
+  const elsewhere = { project: "effect", file: "menu.spec.ts", title: "menu.spec.ts › opens" };
+  expect(problems({ ...skipped, skips: [elsewhere] })).toEqual([]);
 });
 
 test("a run that names no spec files for a project is a problem", () => {
@@ -171,11 +217,14 @@ test("a run stopped with tests in flight is a problem", () => {
     suites: [
       {
         file: "toggle.spec.ts",
+        title: "toggle.spec.ts",
         specs: [
           {
+            title: "passes",
             tests: [{ projectName: "effect", status: "expected", results: [{ status: "passed" }] }],
           },
           {
+            title: "stopped",
             tests: [
               { projectName: "effect", status: "skipped", results: [{ status: "interrupted" }] },
             ],
@@ -202,7 +251,7 @@ test("a test that skips for want of a fixture is a problem when we have it, or i
   const skipped = (project: string, fixture: string) => ({
     ...covered,
     counts,
-    missing: [{ project, file: "a.spec.ts", fixture }],
+    skips: [{ project, file: "a.spec.ts", title: "a.spec.ts › opens", fixture }],
   });
   expect(problems(skipped("effect", "toggle"))).toEqual([
     "a.spec.ts skipped a test in effect for want of toggle, which we ship.",
@@ -215,20 +264,41 @@ test("a test that skips for want of a fixture is a problem when we have it, or i
   expect(problems(skipped("effect-ssr", "own-tabs-keys"))).toEqual([]);
 });
 
-test("a skip for a missing fixture is read from the report", () => {
-  const skip = (description: string) => ({
-    projectName: "own",
-    status: "skipped",
-    annotations: [{ type: "skip", description }],
+test("each skip is read from the report by its title, with the fixture it wanted", () => {
+  const skip = (title: string, description: string) => ({
+    title,
+    tests: [
+      { projectName: "own", status: "skipped", annotations: [{ type: "skip", description }] },
+    ],
   });
-  const found = missing({
+  const file = "../../../../specs/f.spec.ts";
+  const found = skips({
     config: {},
     suites: [
       {
-        file: "../../../../specs/f.spec.ts",
-        specs: [{ tests: [skip("No own-tabs-keyz fixture for effect."), skip("Only web.")] }],
+        file,
+        title: file,
+        specs: [skip("opens", "No own-tabs-keyz fixture for effect.")],
+        suites: [
+          {
+            file,
+            title: "controlled",
+            specs: [
+              skip("closes", "Only web."),
+              { title: "planned", tests: [entry("own", "fixme")] },
+              { title: "runs", tests: [entry("own", "expected")] },
+              {
+                title: "stopped",
+                tests: [{ ...entry("own", "skipped"), results: [{ status: "interrupted" }] }],
+              },
+            ],
+          },
+        ],
       },
     ],
   });
-  expect(found).toEqual([{ project: "own", file: "f.spec.ts", fixture: "own-tabs-keyz" }]);
+  expect(found).toEqual([
+    { project: "own", file: "f.spec.ts", title: "f.spec.ts › opens", fixture: "own-tabs-keyz" },
+    { project: "own", file: "f.spec.ts", title: "f.spec.ts › controlled › closes" },
+  ]);
 });
