@@ -1,12 +1,14 @@
 packages:
-  - apps/*
   - packages/*
-  - tools/*
+  - fixtures
 
 catalogMode: prefer
 
 catalog:
+  "@effect/ui": https://pkg.pr.new/Effect-TS/ui/@effect/ui@22128c65
+  "@effect/vitest": 4.1.6
   "@types/node": ^26.6.5
+  effect: 4.1.6
   typescript: ^7.0.2
   vite: npm:@voidzero-dev/vite-plus-core@8.3.8001
   vite-plus: 1.8.0

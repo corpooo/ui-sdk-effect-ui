@@ -4,11 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "ready": "vp check && vp run -r test && vp run -r build",
-    "dev": "vp run website#dev",
+    "upstream": "node scripts/upstream.ts",
+    "specs": "node scripts/specs.ts",
+    "coverage": "node scripts/coverage.ts",
+    "ci": "vp install --frozen-lockfile && vp run upstream && vp check && vp test && vp run specs && vp run coverage",
     "prepare": "vp config"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "devEngines": {

@@ -1,0 +1,3 @@
+[submodule "upstream/ui"]
+	path = upstream/ui
+	url = https://github.com/vercel-labs/ui

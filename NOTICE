@@ -1,0 +1,9 @@
+ui-sdk-effect-ui
+Copyright 2026 Corpo. Licensed under the MIT License, in LICENSE.
+
+The files under fixtures/, but for fixtures/own/, are rewritten from
+the playground fixtures of UI SDK (https://github.com/vercel-labs/ui),
+Copyright 2026 Vercel, Inc.,
+licensed under the Apache License, Version 2.0, in LICENSES/Apache-2.0.txt.
+Each says which upstream file it follows. They render the same page with
+Effect UI in place of React.
