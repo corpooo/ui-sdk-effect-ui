@@ -1,8 +1,9 @@
 import { Html, HtmlServer } from "@effect/ui/html";
 import { Story } from "@effect/ui/testing";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
+import { Effect, Equal, Schema } from "effect";
 import {
+  createMenuController,
   Menu,
   MenuEvents,
   MenuMessage,
@@ -192,6 +193,10 @@ describe("Menu", () => {
       assert.isTrue(menu.radioItemState({ group, value: "a" }).checked);
     }),
   );
+
+  it("two controllers nothing has attached are two props, so a swap of one for the other reaches the menu", () => {
+    assert.isFalse(Equal.equals(createMenuController(), createMenuController()));
+  });
 
   it.effect("a server render of a closed menu draws its trigger and no content", () =>
     Effect.gen(function* () {

@@ -2,6 +2,7 @@ import { UiSchema, View } from "@effect/ui";
 import { Html } from "@effect/ui/html";
 import { formatShortcut } from "@ui-sdk/core";
 import {
+  createMenuController as createCoreMenuController,
   menu,
   type MenuCheckboxItemProps,
   type MenuContentProps,
@@ -12,7 +13,7 @@ import {
   type MenuTriggerProps,
 } from "@ui-sdk/core/menu";
 import { menuCheckable } from "@ui-sdk/core/renderer";
-import { Schema } from "effect";
+import { Equal, Schema } from "effect";
 import {
   defined,
   drawn,
@@ -464,4 +465,12 @@ export const Menu = Html.component({
   },
 });
 
-export { createMenuController, type MenuController } from "@ui-sdk/core/menu";
+export type { MenuController } from "@ui-sdk/core/menu";
+
+/**
+ * Makes a controller to pass as `controller`. Effect UI compares props with
+ * `Equal.equals`, so it compares by reference: two of core's that nothing has
+ * attached yet are otherwise equal, and a swap of one for the other is dropped.
+ */
+export const createMenuController = (): MenuController =>
+  Equal.byReferenceUnsafe(createCoreMenuController());

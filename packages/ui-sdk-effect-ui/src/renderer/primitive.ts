@@ -51,7 +51,7 @@ import {
   takeOwnId,
   unwatched,
 } from "@ui-sdk/core/renderer";
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Equal, Schema, Stream } from "effect";
 
 /**
  * One render's description of an instance: the options this render gives it.
@@ -286,14 +286,19 @@ type Hold = {
 };
 
 // All a controller has here: a number, as a subscription's dependencies take
-// only primitives, and the hold that has it now. Only in a browser, as `live` is.
-type Controlled = { readonly id: number; hold?: Hold | undefined };
+// only primitives, the hold that has it now, and the handle a render made
+// while no hold had it, until the end of that task's turn, when a hold that
+// starts after a component's first render takes it. Only in a browser, as `live` is.
+type Controlled = { readonly id: number; hold?: Hold | undefined; fresh?: Handle | undefined };
 const controllers = new WeakMap<object, Controlled>();
 let numbered = 0;
 const controlled = (controller: object) => {
   let found = controllers.get(controller);
   if (!found) {
     controllers.set(controller, (found = { id: numbered++ }));
+    // Effect UI compares props with `Equal.equals`, which takes two of core's
+    // controllers that nothing has attached yet for equal, and drops a swap.
+    Equal.byReferenceUnsafe(controller);
   }
   return found;
 };
@@ -360,12 +365,17 @@ export const held = <Msg>(
             };
             const own = controlled(controller);
             own.hold = hold;
-            // Effect UI starts a subscription after the component's first render,
-            // and before its render in an update, and a render while another
-            // component's hold had the controller went there. Only the
-            // component's own render names its instance, so it renders again.
-            queueMicrotask(() => {
-              if (own.hold === hold && !hold.handle) {
+            // Effect UI starts a subscription just after the component's first
+            // render, so a render no hold had in this turn is its own. In an
+            // update it starts before the render, and a render while another
+            // component's hold had the controller went there: the component
+            // renders again, as only its own render names its instance.
+            const { fresh } = own;
+            own.fresh = undefined;
+            controls.enter(() => {
+              if (fresh && !hold.handle) {
+                keep(hold, fresh);
+              } else if (!hold.handle && typeof document !== "undefined") {
                 controls.emit(rerender);
               }
             });
@@ -384,11 +394,19 @@ export function holding(controller: object | undefined, handle: Handle) {
   if (controller === undefined || typeof document === "undefined") {
     return;
   }
-  const { hold } = controlled(controller);
+  const own = controlled(controller);
+  const { hold } = own;
   // Only a hold no component has yet, or this one's: another component's
   // render, like a server's, or the one before a remount, leaves it be.
   if (hold && (!hold.handle || hold.handle.id === handle.id)) {
     keep(hold, handle);
+  } else if (!hold) {
+    own.fresh = handle;
+    queueMicrotask(() => {
+      if (own.fresh === handle) {
+        own.fresh = undefined;
+      }
+    });
   }
 }
 
