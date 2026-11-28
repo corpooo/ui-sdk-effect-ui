@@ -13,10 +13,22 @@
 //   render. Both give the same attributes for the same options, so a
 //   hydrated page starts out matching its server HTML.
 //
-// Core runs every key the component controls as controlled: the component's
-// Model or props hold the value, core asks for each change through
-// `on<Key>Change`, and `emit` turns that into the component's message.
-import { Component, Mount, type View } from "@effect/ui";
+// A key the parent passes runs controlled in core: core asks for each change
+// through `on<Key>Change`, `emit` turns that into the component's message, and
+// the parent answers with the prop. A key the parent leaves out runs
+// uncontrolled, seeded with the Model's value as `default<Key>`: core takes
+// each change at once, so two presses in one task both count, and the same
+// message keeps the Model in step for the server, hydration and a restore.
+//
+// A part core says isn't present, like an unselected tab's panel, is left out
+// of the page (`whilePresent`), so it has no mount to say when it's back.
+// Every render asks it again, and each change that can bring it back renders:
+// a change core asks for arrives as the component's message or the parent's
+// prop, and one core makes on its own changes what a part in the page shows,
+// which that part's mount tells. So a component keeps at least one part in
+// the page whose state holds what the left-out ones depend on, as the
+// selected value is in the state of a tabs' root.
+import { Component, Mount, View } from "@effect/ui";
 import type {
   Attrs,
   OptionsOf,
@@ -33,8 +45,9 @@ import {
   commit,
   partState,
   present,
-  sameValue,
+  sameSlotState,
   subscribe,
+  takeOwnId,
   unwatched,
 } from "@ui-sdk/core/renderer";
 import { Effect, Schema, Stream } from "effect";
@@ -95,18 +108,30 @@ const optionsOf = (handle: Handle) => ({ ...handle.options, id: handle.id });
 export function instanceOf<P extends Primitive>(handle: Handle<P>): ReturnType<P> {
   let instance = live.get(handle.id)?.instance ?? detached.get(handle);
   if (!instance) {
-    instance = unwatched(() => handle.primitive(optionsOf(handle)));
+    // Without its controller, which stays with the instance on the page.
+    instance = unwatched(() => handle.primitive({ ...optionsOf(handle), controller: undefined }));
     detached.set(handle, instance);
   }
   return instance as ReturnType<P>;
 }
+
+// The state a render's options make of the state the instance had then.
+const previews = new WeakMap<Handle, { readonly base: object; readonly state: object }>();
 
 // Reads what a render shows: the state its options make of the instance's,
 // before a mount hands them over, with the instance around it showing its own.
 function showing<T>(handle: Handle, read: (state: object) => T): T {
   const own = () => {
     const instance = instanceOf(handle);
-    const state = instance.preview(optionsOf(handle)) ?? instance.get();
+    const base = instance.get();
+    // Made once per render and state: every part of the render asks, and
+    // options can measure the page to make theirs.
+    let preview = previews.get(handle);
+    if (preview?.base !== base) {
+      preview = { base, state: instance.preview(optionsOf(handle)) ?? base };
+      previews.set(handle, preview);
+    }
+    const { state } = preview;
     return instance.view(state, () => read(state));
   };
   return handle.around ? showing(handle.around, own) : own();
@@ -121,27 +146,52 @@ export interface Shown<P extends Primitive = Primitive, S extends SlotName<P> = 
   readonly handle: Handle<P>;
   readonly slot: S;
   readonly props: PropsOf<P, S>;
+  /** The id the consumer gives the element, in place of the one core makes. */
+  readonly id: string | undefined;
   readonly present: boolean;
   readonly attrs: Attrs;
   readonly state: StateOf<P, S>;
 }
 
+type Snapshot = Pick<Shown, "present" | "attrs" | "state">;
+
+// What a part shows for `props` and `state`, with the consumer's id over the one core makes.
+function snapshot(
+  part: Part,
+  id: string | undefined,
+  props = part.props,
+  state = part.store.get(),
+) {
+  const made = attrs(part, props, state);
+  return {
+    present: present(part, props, state),
+    attrs: id === undefined ? made : { ...made, id },
+    state: partState(part, props, state),
+  };
+}
+
+/**
+ * `id` is the id the consumer gives the element. A part takes it as it
+ * renders, so the parts drawn after it point at it from their first render,
+ * on a server too, as `aria-labelledby` on a tab's panel does. A part drawn
+ * before it points at it once its element binds.
+ */
 export function shown<P extends Primitive, S extends SlotName<P>>(
   handle: Handle<P>,
   slot: S,
   props: PropsOf<P, S>,
+  id?: string,
 ): Shown<P, S> {
   return showing(handle, (state) => {
     // A render may never commit, so the part keeps its props until a mount commits these.
     const part = instanceOf(handle).part(slot, props, true);
-    return {
-      handle,
-      slot,
-      props,
-      present: present(part, props, state),
-      attrs: attrs(part, props, state),
-      state: partState(part, props, state) as StateOf<P, S>,
-    };
+    const shows = snapshot(part, id, props, state);
+    // Only a part that is drawn: core keeps each part it names, and a part
+    // left out is made again by every render.
+    if (shows.present) {
+      takeOwnId(part, id);
+    }
+    return { handle, slot, props, id, ...shows } as Shown<P, S>;
   });
 }
 
@@ -158,8 +208,9 @@ export function emit(handle: Handle, message: unknown) {
 function acquire(handle: Handle) {
   let entry = live.get(handle.id);
   if (!entry) {
-    const options = optionsOf(handle);
-    entry = { instance: handle.primitive(options), options, uses: 0, sinks: new Set() };
+    const instance = handle.primitive(optionsOf(handle));
+    // The render's own options, so its handover finds them taken.
+    entry = { instance, options: handle.options, uses: 0, sinks: new Set() };
     live.set(handle.id, entry);
   }
   entry.uses++;
@@ -192,17 +243,11 @@ function handOver(handle: Handle) {
 // Core listens for every event itself: an Effect UI handler gets a payload, and core's need the event.
 const host = { by: "framework", attaches: [] } as const;
 
-type Snapshot = Pick<Shown, "present" | "attrs" | "state">;
-
-const sameRecord = (a: Record<string, unknown>, b: Record<string, unknown>) => {
-  const keys = Object.keys(a);
-  return keys.length === Object.keys(b).length && keys.every((key) => sameValue(a[key], b[key]));
-};
 const same = (a: Snapshot, b: Snapshot | undefined) =>
   b !== undefined &&
   a.present === b.present &&
-  sameRecord(a.attrs, b.attrs) &&
-  sameRecord(a.state, b.state);
+  sameSlotState(a.attrs, b.attrs) &&
+  sameSlotState(a.state, b.state);
 
 // A message reaches the component as an event on the part's element, which
 // Effect UI's handler below answers with the message. An event is delivered
@@ -212,7 +257,7 @@ const same = (a: Snapshot, b: Snapshot | undefined) =>
 // its own, so a message names the instance it is for.
 const messageEvent = "ui-sdk-message";
 let carried: { readonly to: string; readonly message: unknown } | undefined;
-function deliver(node: HTMLElement, to: string, message: unknown) {
+function deliver(node: Element, to: string, message: unknown) {
   const outer = carried;
   carried = { to, message };
   try {
@@ -239,7 +284,12 @@ type Binding = {
   readonly after: After | undefined;
 };
 
-function attach(node: HTMLElement, first: Handle) {
+// Only the spec harness listens, in `fixtures/hydrate.ts`: Effect UI repairs a
+// hydration mismatch before any mount runs, and says nothing, so the harness
+// counts what changed until core first writes to a part's element.
+const bindEvent = "ui-sdk-bind";
+
+function attach(node: Element, first: Handle) {
   const releases = chainOf(first).map(acquire);
   const entry = live.get(first.id)!;
   const sink = (message: unknown) => deliver(node, first.id, message);
@@ -249,11 +299,10 @@ function attach(node: HTMLElement, first: Handle) {
   let current: Binding | undefined;
   // What core showed when the component last rendered or was last told to.
   let told: Snapshot | undefined;
-  const read = (part: Part): Snapshot => ({
-    present: present(part),
-    attrs: attrs(part),
-    state: partState(part),
-  });
+  // From the props this mount rendered: parts with no key of their own, like
+  // tab icons, share one core part, whose props are the last one committed.
+  const read = (part: Part): Snapshot =>
+    snapshot(part, current?.shown.id, current?.shown.props ?? part.props);
   // Tells the component when core shows something it hasn't rendered.
   const check = (bound: Part) => {
     if (bound !== part) {
@@ -276,11 +325,15 @@ function attach(node: HTMLElement, first: Handle) {
         // Props that change a part's key name another part.
         const next = entry.instance.part(shown.slot, shown.props, true);
         commit(next, shown.props);
+        // Before it binds, so the parts whose mounts run after it read the consumer's id.
+        takeOwnId(next, shown.id);
         if (next !== part) {
           leave();
           part = next;
+          node.dispatchEvent(new Event(bindEvent));
           const cleanups = [
-            bind(next, node, host),
+            // Typed for HTML, though core binds SVG too, like a tab's icon.
+            bind(next, node as HTMLElement, host),
             // A change during a render waits for every mount to take that
             // render, which most changes then turn out to be part of.
             subscribe(next, () => (rendering ? queueMicrotask(() => check(next)) : check(next))),
@@ -318,7 +371,7 @@ const BindPart = Mount.make(
   { args: { binding: Schema.declare(isBinding, { expected: "Binding" }) } },
   (node: unknown, { binding }, changes) =>
     Effect.gen(function* () {
-      if (!(node instanceof HTMLElement)) {
+      if (!(node instanceof Element)) {
         return Component.noop;
       }
       const element = yield* Effect.acquireRelease(
@@ -360,3 +413,32 @@ export const drawn = <Msg, P extends Primitive, S extends SlotName<P>>(
       carried?.to === shown.handle.id ? (carried.message as Msg) : undefined,
     )
     .onMount(BindPart({ binding: { shown: shown as unknown as Shown, onChange, after } }));
+
+/**
+ * A part that is drawn only while core says it's present, like a tab's panel
+ * while its tab is selected. `show` makes what `part` draws from the
+ * consumer's arguments. Left out, it gives the consumer nothing to chain on:
+ * `tabs.panel(h.div.key(value), { value })?.children(...)`. The consumer
+ * keys such an element, since Effect UI pairs elements without a key by
+ * position, and one that comes and goes shifts the ones after it.
+ */
+export const whilePresent = <
+  Tag extends string,
+  Args extends ReadonlyArray<any>,
+  P extends Primitive,
+  S extends SlotName<P>,
+  R,
+>(
+  part: View.Part<Tag, [Shown<P, S>], R>,
+  show: (...args: Args) => Shown<P, S>,
+) =>
+  View.wrapPart(
+    part,
+    <B extends View.PartTarget<Tag>>(
+      builder: B,
+      ...args: Args
+    ): ReturnType<B["attr"]> | undefined => {
+      const shown = show(...args);
+      return shown.present ? part(builder, shown) : undefined;
+    },
+  );

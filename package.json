@@ -7,6 +7,7 @@
     "upstream": "node scripts/upstream.ts",
     "specs": "node scripts/specs.ts",
     "coverage": "node scripts/coverage.ts",
+    "ci": "vp install --frozen-lockfile && vp run upstream && vp check && vp test && vp run specs && vp run coverage",
     "prepare": "vp config"
   },
   "devDependencies": {

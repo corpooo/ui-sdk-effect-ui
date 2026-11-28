@@ -1,11 +1,11 @@
 // Runs the upstream specs against our fixtures: overlays the fixtures, builds
-// and serves the upstream playground, runs Playwright from the upstream
-// checkout with our config, then stops the server and restores the checkout,
-// whatever the run did. Arguments go to Playwright, like a spec file or `-g`.
-// `--restore` only restores.
+// the upstream playground and serves it from this process, runs Playwright
+// from the upstream checkout with our config, then stops the server and
+// restores the checkout, whatever the run did. Arguments go to Playwright,
+// like a spec file or `-g`. `--restore` only restores.
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";
-import { apply, planned, restore, upstreamChanges } from "./overlay.ts";
+import { apply, planned, restore, unpinned, upstreamChanges } from "./overlay.ts";
 import {
   playwrightConfig,
   port,
@@ -14,6 +14,7 @@ import {
   upstreamBin,
   upstreamPlayground,
   upstreamTests,
+  upstreamVite,
 } from "./paths.ts";
 
 function restored() {
@@ -60,9 +61,9 @@ const ended = (child: ChildProcess) =>
     child.on("close", (code) => end(code ?? 1));
   });
 
-// Ctrl+C and a kill stop whatever runs, so the run ends and cleans up below.
+// Ctrl+C, a kill and a closed terminal stop whatever runs, so the run ends and cleans up below.
 let interrupted = false;
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.on(signal, () => {
     interrupted = true;
     for (const child of running) {
@@ -72,26 +73,6 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 const errorsOnly: SpawnOptions["stdio"] = ["ignore", "ignore", "inherit"];
-
-/** Whether the playground answers before its server gives up. */
-async function serving(server: Promise<number>) {
-  let gone = false;
-  void server.then(() => (gone = true));
-  for (let waited = 0; waited < 60_000 && !gone; waited += 100) {
-    const up = await fetch(`http://localhost:${port}`).then(
-      (response) => response.ok,
-      () => false,
-    );
-    if (up) {
-      return true;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  console.error(
-    `The playground isn't serving on port ${port}. If something else uses it, set PLAYGROUND_PORT.`,
-  );
-  return false;
-}
 
 async function run() {
   // A build, as upstream's CI serves: our fixtures are files outside the
@@ -107,13 +88,40 @@ async function run() {
   if (built !== 0 || interrupted) {
     return built || 1;
   }
-  const preview = start("vite", ["preview", "--port", port, "--strictPort"], {
-    cwd: upstreamPlayground,
-    stdio: errorsOnly,
+  // Resolves once this run's own server listens, and fails when it can't
+  // bind, so the specs never run against whatever else holds the port. Its
+  // own SIGTERM and stdin handlers exit before the links come out, so ours
+  // are the only ones left.
+  // Imported by path, as the Vite the playground builds with.
+  const { preview } = (await import(upstreamVite)) as {
+    preview: (config: object) => Promise<{ close: () => Promise<void> }>;
+  };
+  const term = process.listeners("SIGTERM");
+  const end = process.stdin.listeners("end");
+  const server = await preview({
+    root: upstreamPlayground,
+    logLevel: "error",
+    preview: { port: Number(port), strictPort: true },
+  }).catch((error: Error) => {
+    console.error(
+      `The playground can't serve on port ${port}: ${error.message}. Set PLAYGROUND_PORT.`,
+    );
   });
-  const previewed = ended(preview);
+  for (const listener of process.listeners("SIGTERM")) {
+    if (!term.includes(listener)) {
+      process.off("SIGTERM", listener);
+    }
+  }
+  for (const listener of process.stdin.listeners("end")) {
+    if (!end.includes(listener)) {
+      process.stdin.off("end", listener);
+    }
+  }
+  if (!server) {
+    return 1;
+  }
   try {
-    if (!(await serving(previewed))) {
+    if (interrupted) {
       return 1;
     }
     return await ended(
@@ -125,13 +133,18 @@ async function run() {
       }),
     );
   } finally {
-    stop(preview);
-    await previewed;
+    await server.close();
   }
 }
 
 // First, so an earlier run's report can't pass the coverage gate for a run that never started.
 rmSync(report, { force: true });
+// The specs, the playground and core all come from the pinned commit.
+const moved = unpinned();
+if (moved) {
+  console.error(moved);
+  process.exit(1);
+}
 mkdirSync(results, { recursive: true });
 apply();
 console.log(`Overlaid ${planned().length} fixture files.`);
