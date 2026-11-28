@@ -261,6 +261,14 @@ test("a controller given away and taken back in one task still opens its menu", 
   await expect(menuNamed(page, "Commands")).toBeVisible();
 });
 
+test("a closed menu given another container opens in it", async ({ page, open }) => {
+  await open("own-menu", { containers: "" });
+  await buttonNamed(page, "Switch container").click();
+  await buttonNamed(page, "Portaled").click();
+  const second = page.getByRole("region", { name: "Second container" });
+  await expect(second.getByRole("menu", { name: "Portaled" })).toBeVisible();
+});
+
 test.describe("on a touch phone", () => {
   test.use({ viewport: { width: 390, height: 700 }, hasTouch: true, isMobile: true });
 

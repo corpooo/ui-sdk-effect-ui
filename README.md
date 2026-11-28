@@ -68,7 +68,7 @@ import { Menu } from "@corpooo/ui-sdk-effect-ui/menu";
 
 Menu(h, {
   onEmit: {
-    // An item that runs says which. The menu has already closed.
+    // An item that runs says which. The menu closes right after.
     Picked: ({ value }) => EditorMessage.PickedFileAction({ value }),
     RequestedOpen: () => undefined,
     RequestedChecked: () => undefined,

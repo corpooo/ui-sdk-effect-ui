@@ -19,6 +19,12 @@ const controllerHeld = params.get("controller") === "held";
 const bounce = params.has("bounce");
 // `?sheet` adds a menu in a container that a touch phone shows as a sheet.
 const sheetContainer = params.has("sheet") ? document.createElement("div") : undefined;
+// `?containers` adds a menu whose container a button switches for another while it's closed.
+const containers = params.has("containers")
+  ? (["First container", "Second container"] as const).map((label) =>
+      Object.assign(document.createElement("section"), { ariaLabel: label }),
+    )
+  : undefined;
 
 const controller = createMenuController();
 // The other commands menu's, until the two menus swap controllers.
@@ -38,6 +44,7 @@ const FixtureMessage = UiSchema.TaggedEnum({
   ClickedReplaceCommands: {},
   ClickedRewrapCommands: {},
   PickedCommand: {},
+  ClickedSwitchContainer: {},
   ClosedCommands: {},
   ClickedOpenWithOtherController: {},
   RequestedCheckedNested: { path: Schema.Array(Schema.String), value: Schema.String },
@@ -80,6 +87,8 @@ const Fixture = Html.component({
     replaced: Schema.Boolean,
     // Whether the element around the commands menu was keyed anew, which mounts it again at its path.
     rewrapped: Schema.Boolean,
+    // Whether the portaled menu draws into the second container.
+    second: Schema.Boolean,
   }),
   message: FixtureMessage,
 }).make({
@@ -94,6 +103,7 @@ const Fixture = Html.component({
     swapped: false,
     replaced: false,
     rewrapped: false,
+    second: false,
   }),
   update: ($, message) =>
     FixtureMessage.match(message, {
@@ -117,6 +127,7 @@ const Fixture = Html.component({
       ClickedReplaceCommands: () => $.evolve({ replaced: true }),
       ClickedRewrapCommands: () => $.evolve({ rewrapped: true }),
       PickedCommand: () => $.evolve({ swapped: true }),
+      ClickedSwitchContainer: () => $.evolve({ second: true }),
       ClosedCommands: () => $.evolve({ swapped: false }),
       ClickedOpenWithOtherController: () => $.run(OpenOtherMenu.make({}).pipe(Command.asNoop)),
     }),
@@ -287,6 +298,25 @@ const Fixture = Html.component({
       h.button
         .on("click", () => FixtureMessage.ClickedSheetCommands())
         .children("Commands as a sheet"),
+      containers &&
+        Menu(h, {
+          key: "portaled",
+          props: { container: containers[model.second ? 1 : 0] },
+          onEmit: ignored,
+          view: (menu) =>
+            h.div
+              .style({ display: "contents" })
+              .children(
+                menu.trigger(h.button).children("Portaled"),
+                menu
+                  .content(h.div.key("content").class("popup"))
+                  ?.children(menu.item(h.div.class("item"), { value: "beta" }).children("Beta")),
+              ),
+        }),
+      containers &&
+        h.button
+          .on("click", () => FixtureMessage.ClickedSwitchContainer())
+          .children("Switch container"),
       sheetContainer &&
         Menu(h, {
           key: "sheet",
@@ -311,6 +341,7 @@ function mount(root: HTMLElement) {
   if (sheetContainer) {
     root.append(sheetContainer);
   }
+  root.append(...(containers ?? []));
   Layer.launch(BrowserHost.mount(Fixture, {}, root)).pipe(Effect.runFork);
   // Opens the menu with no render of the app before it, as a shortcut would.
   const outside = document.createElement("button");

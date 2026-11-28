@@ -242,6 +242,12 @@ export const Menu = Html.component({
     held<typeof MenuMessage.Type>($.props.controller, MenuMessage.ChangedPart()),
   parts: (p, model) => {
     const { open, initialOpen: _, container, ...settings } = p.props;
+    if (container) {
+      // Effect UI compares props with `Equal.equals`, which walks an element's
+      // own properties into the window and throws: one compared by reference
+      // is enough for the next render's comparison.
+      Equal.byReferenceUnsafe(container);
+    }
     const changed = MenuMessage.ChangedPart();
     const root: Handle<typeof menu> = handle(p.id("menu"), menu, {
       ...defined(settings),

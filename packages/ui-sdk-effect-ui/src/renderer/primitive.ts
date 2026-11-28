@@ -96,7 +96,8 @@ type Live = {
   readonly instance: PrimitiveInstance;
   options: object;
   uses: number;
-  readonly sinks: Set<(message: unknown) => void>;
+  /** Where each part's mount takes messages, by the element it is on. */
+  readonly sinks: Map<(message: unknown) => void, Element>;
   /** Where messages go while no part is in the page: the subscription that holds the instance. */
   held: ((message: unknown) => void) | undefined;
 };
@@ -247,8 +248,14 @@ export function shown<P extends Primitive, S extends SlotName<P>>(
  */
 export function emit(handle: Handle, message: unknown) {
   const entry = live.get(handle.id);
-  const [sink] = entry?.sinks ?? [];
-  (sink ?? entry?.held)?.(message);
+  if (!entry) {
+    return;
+  }
+  // A part's element in the page, where Effect UI hears it: not one a kept
+  // child holds while it's hidden. Else the hold, else any part.
+  const sinks = [...entry.sinks];
+  const sink = sinks.find(([, node]) => node.isConnected)?.[0] ?? entry.held ?? sinks[0]?.[0];
+  sink?.(message);
 }
 
 function acquire(handle: Handle) {
@@ -256,7 +263,7 @@ function acquire(handle: Handle) {
   if (!entry) {
     const instance = handle.primitive(optionsOf(handle));
     // The render's own options, so its handover finds them taken.
-    entry = { instance, options: handle.options, uses: 0, sinks: new Set(), held: undefined };
+    entry = { instance, options: handle.options, uses: 0, sinks: new Map(), held: undefined };
     live.set(handle.id, entry);
   }
   entry.uses++;
@@ -286,10 +293,8 @@ type Hold = {
 };
 
 // All a controller has here: a number, as a subscription's dependencies take
-// only primitives, the hold that has it now, and the handle a render made
-// while no hold had it, until the end of that task's turn, when a hold that
-// starts after a component's first render takes it. Only in a browser, as `live` is.
-type Controlled = { readonly id: number; hold?: Hold | undefined; fresh?: Handle | undefined };
+// only primitives, and the hold that has it now. Only in a browser, as `live` is.
+type Controlled = { readonly id: number; hold?: Hold | undefined };
 const controllers = new WeakMap<object, Controlled>();
 let numbered = 0;
 const controlled = (controller: object) => {
@@ -365,17 +370,13 @@ export const held = <Msg>(
             };
             const own = controlled(controller);
             own.hold = hold;
-            // Effect UI starts a subscription just after the component's first
-            // render, so a render no hold had in this turn is its own. In an
-            // update it starts before the render, and a render while another
-            // component's hold had the controller went there: the component
-            // renders again, as only its own render names its instance.
-            const { fresh } = own;
-            own.fresh = undefined;
+            // Effect UI starts a subscription after the component's first render,
+            // and before its render in an update, and a render while another
+            // component's hold had the controller went there. Only the
+            // component's own render names its instance, so it renders again,
+            // through Effect UI, before anything that runs once it commits.
             controls.enter(() => {
-              if (fresh && !hold.handle) {
-                keep(hold, fresh);
-              } else if (!hold.handle && typeof document !== "undefined") {
+              if (!hold.handle && typeof document !== "undefined") {
                 controls.emit(rerender);
               }
             });
@@ -394,19 +395,11 @@ export function holding(controller: object | undefined, handle: Handle) {
   if (controller === undefined || typeof document === "undefined") {
     return;
   }
-  const own = controlled(controller);
-  const { hold } = own;
+  const { hold } = controlled(controller);
   // Only a hold no component has yet, or this one's: another component's
   // render, like a server's, or the one before a remount, leaves it be.
   if (hold && (!hold.handle || hold.handle.id === handle.id)) {
     keep(hold, handle);
-  } else if (!hold) {
-    own.fresh = handle;
-    queueMicrotask(() => {
-      if (own.fresh === handle) {
-        own.fresh = undefined;
-      }
-    });
   }
 }
 
@@ -482,7 +475,7 @@ function attach(node: Element, first: Handle) {
   const releases = chainOf(first).map(acquire);
   const entry = live.get(first.id)!;
   const sink = (message: unknown) => deliver(node, first.id, message);
-  entry.sinks.add(sink);
+  entry.sinks.set(sink, node);
   let part: Part | undefined;
   let leave = () => {};
   let current: Binding | undefined;
