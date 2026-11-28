@@ -3,13 +3,14 @@
 // which of upstream's fixtures we have and what ran for them, and fails when
 // a spec file for a fixture we ship ran no test, a fixture we ship is opened
 // by no spec, a test skipped for want of a fixture we have, or a fixture
-// coverage-baseline.json names is gone. A spec file that skips every test
-// for us by its own rule is listed there as exempt, with why. Our own specs
+// coverage-baseline.json names is gone, and when a spec file for a fixture
+// we ship skips a test for us by its own rule, unless the baseline exempts
+// that test, or its describe block or spec file, with why. Our own specs
 // and fixtures are counted apart, and each own spec file must run a test,
 // unless it holds only `test.fixme`s.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { interrupted, missing, problems, ran, tally, type Counts, type Report } from "./gate.ts";
+import { interrupted, problems, ran, skips, tally, type Counts, type Report } from "./gate.ts";
 import { opened, owned, ownShipped, shipped } from "./overlay.ts";
 import {
   baseline as baselineFile,
@@ -70,8 +71,8 @@ for (const project of Object.keys(ownProjects)) {
   }
 }
 
-for (const [file, why] of Object.entries(exempt)) {
-  console.log(`\nExempt: ${file}. ${why}`);
+for (const [title, why] of Object.entries(exempt)) {
+  console.log(`\nExempt: ${title}. ${why}`);
 }
 
 const found = problems({
@@ -86,7 +87,7 @@ const found = problems({
   shipped: ours,
   ownShipped: ourOwn,
   opened: opened(),
-  missing: missing(report),
+  skips: skips(report),
   baseline,
   exempt,
 });
